@@ -71,21 +71,15 @@ const OrderForm = (): React.JSX.Element => {
   }, [numProducts, append, fields.length]);
 
   useEffect(() => {
-    // Always ensure there's exactly one product (Product 1)
+    // Ensure there's exactly one product by default
     if (fields.length === 0) {
       append({
         productType: '', productSubType: '', otherProduct: '',
         message: '', details: '', quantity: 1, candle: '', image: null,
       });
     }
-    // Remove any additional products if they exist
-    else if (fields.length > 1) {
-      for (let i = fields.length - 1; i > 0; i--) {
-        remove(i);
-      }
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [append, fields.length, remove]);
+  }, [append, fields.length]);
 
   // Effect to clean up object URLs on unmount
   useEffect(() => {
@@ -386,7 +380,16 @@ const OrderForm = (): React.JSX.Element => {
               const { onChange: formImageOnChange, ...restImageRegister } = register(`products.${index}.image`);
               return (
               <div key={field.id} className="relative p-4 mb-4 border border-primaryLight rounded-2xl">
-                 <h3 className="font-semibold text-gray-800 mb-2">Product 1</h3>
+                 {fields.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => remove(index)}
+                    className="absolute top-2 right-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                 )}
+                 <h3 className="font-semibold text-gray-800 mb-2">Product {index + 1}</h3>
 
                 <Controller
                   control={control}
@@ -484,7 +487,15 @@ const OrderForm = (): React.JSX.Element => {
                 )}
               </div>
             )})}
-            {/* Removed the "Add Another Product" button to ensure only Product 1 exists */}
+            {fields.length < 3 && (
+             <button
+                type="button"
+                onClick={() => append({ productType: '', productSubType: '', otherProduct: '', message: '', details: '', quantity: 1, candle: '', image: null })}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primaryLight text-primary rounded-2xl hover:bg-pink-50 transition-colors"
+             >
+                <Plus size={18} /> Add Another Product
+             </button>
+            )}
           </FormSection>
 
           <FormSection title="Payment & Instructions">
