@@ -71,15 +71,21 @@ const OrderForm = (): React.JSX.Element => {
   }, [numProducts, append, fields.length]);
 
   useEffect(() => {
-    // Ensure there's exactly one product by default
+    // Always ensure there's exactly one product by default (Product 1)
     if (fields.length === 0) {
+      // If no products exist, add one
       append({
         productType: '', productSubType: '', otherProduct: '',
         message: '', details: '', quantity: 1, candle: '', image: null,
       });
+    } else if (fields.length > 1) {
+      // If more than one product exists, remove all except the first one
+      for (let i = fields.length - 1; i > 0; i--) {
+        remove(i);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [append, fields.length]);
+  }, [fields.length]);
 
   // Effect to clean up object URLs on unmount
   useEffect(() => {
