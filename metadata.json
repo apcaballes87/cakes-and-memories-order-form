@@ -1,0 +1,7 @@
+{
+  "name": "Cakes and Memories Cebu Order Form",
+  "description": "A dynamic order form for a cake shop, allowing customers to detail their orders for cakes and other products, specify delivery information, and submit them directly to a Supabase backend.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
