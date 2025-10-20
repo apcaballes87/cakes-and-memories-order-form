@@ -95,7 +95,8 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
         geocoder.current.geocode({ location: coords }, (results: any, status: any) => {
             if (status === 'OK' && results?.[0]) {
                 setPinnedAddress(results[0].formatted_address);
-                setDeliveryAddress(results[0].formatted_address);
+                // Don't automatically set deliveryAddress - let users input it manually
+                // setDeliveryAddress(results[0].formatted_address);
             } else {
                 setPinnedAddress('Address not found');
             }
