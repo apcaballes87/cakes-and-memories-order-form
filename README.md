@@ -16,11 +16,26 @@ View your app in AI Studio: https://ai.studio/apps/drive/1VhejYSclqjnTZAbwsMwgTu
    ```bash
    npm install
    ```
-2. Set the `GEMINI_API_KEY` in `.env.local` to your Gemini API key
+2. Set the `GEMINI_API_KEY` in `.env.local` to your Google Maps API key
 3. Run the app:
    ```bash
    npm run dev
    ```
+
+### Accessing the Application
+
+Once the development server is running, you can access:
+
+- **Main Application**: http://localhost:3000/order/default-user/1
+- **Local Testing Page**: http://localhost:3000/test-local.html (provides convenient links to all parts of the app)
+- **Local Testing Guide**: [LOCAL_TESTING.md](LOCAL_TESTING.md)
+
+### Testing Different Parts
+
+The local testing page provides links to:
+- Order form with 1 product
+- Order form with 3 products
+- Thank you page
 
 ## Deployment
 
@@ -29,6 +44,7 @@ For deployment instructions, please refer to:
 - [Deployment Guide](docs/DEPLOYMENT.md) - Complete deployment instructions
 - [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) - Step-by-step verification
 - [Deployment Summary](DEPLOYMENT_SUMMARY.md) - Summary of all changes made
+- [Simple Deployment Guide](SIMPLE_DEPLOYMENT_GUIDE.md) - Easy step-by-step deployment
 
 ### Quick Deployment Steps
 
@@ -50,5 +66,5 @@ Create a `.env.production` file with the following variables:
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-GEMINI_API_KEY=your_gemini_api_key
+GEMINI_API_KEY=your_google_maps_api_key
 ```
