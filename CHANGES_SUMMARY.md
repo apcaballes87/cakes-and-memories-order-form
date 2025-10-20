@@ -6,7 +6,7 @@
 - Modified the OrderForm to ensure only one product (Product 1) is displayed by default
 - Kept the "Add Another Product" button so users can add more products if needed
 - Updated the product titles to show "Product 1", "Product 2", etc. correctly
-- Added logic to ensure exactly one product is always present initially
+- Fixed the useEffect hook to properly ensure only one product is displayed initially
 
 ### 2. Time Event - Dropdown Options ✅
 - Replaced the time input field with a dropdown select element
@@ -39,8 +39,8 @@
 
 The application has been tested locally and is working correctly with all the requested changes:
 
-- http://localhost:3002/order/default-user/1 - Test the order form with all changes
-- http://localhost:3002/test-local.html - Use the testing page for quick access to different parts
+- http://localhost:3004/order/default-user/1 - Test the order form with all changes (1 product)
+- http://localhost:3004/test-local.html - Use the testing page for quick access to different parts
 
 ## Validation
 
