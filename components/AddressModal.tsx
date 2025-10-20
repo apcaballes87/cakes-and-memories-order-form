@@ -40,7 +40,7 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
         if (!isOpen) return;
 
         const loader = new GoogleMapsLoader({
-            apiKey: 'AIzaSyDThtN_G7khUxdZy6rVPgI0zpsyPS30ryE', // Same API key from MapPlaceholder
+            apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDThtN_G7khUxdZy6rVPgI0zpsyPS30ryE', // Use environment variable
             version: 'weekly',
             libraries: ['places', 'geocoding']
         });

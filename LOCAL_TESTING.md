@@ -41,10 +41,11 @@ To stop the development server, press `Ctrl + C` in the terminal where it's runn
 
 ## Environment Variables
 
-For local testing, make sure you have a `.env.local` file in the project root with your Google Maps API key:
+For local testing, make sure you have a `.env.local` file in the project root with your API keys:
 
 ```
 GEMINI_API_KEY=your_google_maps_api_key_here
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 ```
 
 ## Troubleshooting

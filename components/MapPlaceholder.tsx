@@ -9,7 +9,8 @@ const MapPlaceholder = ({ address, coordinates }: MapPlaceholderProps): React.JS
     const [mapUrl, setMapUrl] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    const API_KEY = 'AIzaSyDThtN_G7khUxdZy6rVPgI0zpsyPS30ryE';
+    // Use environment variable for API key
+    const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDThtN_G7khUxdZy6rVPgI0zpsyPS30ryE';
 
     useEffect(() => {
         // Reset map url when address is cleared

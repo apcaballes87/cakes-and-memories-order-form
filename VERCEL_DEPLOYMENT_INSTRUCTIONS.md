@@ -26,7 +26,10 @@ After the initial deployment completes, you need to add environment variables:
    Value: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbmdvZml2dXBvYnRmdWRuaG5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE2ODc1NjkyMTQsImV4cCI6MjAwMzE0NTIxNH0.y2jsrPWt7Q_016e1o8PkM-Ayyti9yzxj3jH9hvH4DiM`
    (This is the fallback value - replace with your own Supabase anon key if you have one)
 
-3. Name: `GEMINI_API_KEY`
+3. Name: `VITE_GOOGLE_MAPS_API_KEY`
+   Value: (Your Google Maps API key)
+
+4. Name: `GEMINI_API_KEY`
    Value: (Your Google Maps API key)
 
 ## Step 3: Redeploy

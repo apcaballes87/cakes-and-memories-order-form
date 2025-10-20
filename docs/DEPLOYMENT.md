@@ -16,6 +16,7 @@ Before building for production, ensure you have the following environment variab
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
@@ -65,7 +66,7 @@ Ensure you have created a public bucket named `cakepics` in your Supabase Storag
 
 ## Google Maps API
 
-Make sure your Google Maps API key has the necessary permissions for the Google Maps JavaScript API.
+Make sure your Google Maps API key has the necessary permissions for the Google Maps JavaScript API and Google Maps Static API.
 
 ## Testing the Production Build
 

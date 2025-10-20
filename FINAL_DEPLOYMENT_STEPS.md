@@ -29,12 +29,13 @@ After Vercel finishes the initial deployment:
 1. Go to your project dashboard in Vercel
 2. Click "Settings" tab
 3. Click "Environment Variables" in the sidebar
-4. Add these three variables:
+4. Add these four variables:
 
 | Name | Value |
 |------|-------|
 | `VITE_SUPABASE_URL` | `https://congofivupobtfudnhni.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbmdvZml2dXBvYnRmdWRuaG5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE2ODc1NjkyMTQsImV4cCI6MjAwMzE0NTIxNH0.y2jsrPWt7Q_016e1o8PkM-Ayyti9yzxj3jH9hvH4DiM` |
+| `VITE_GOOGLE_MAPS_API_KEY` | [Your Google Maps API key] |
 | `GEMINI_API_KEY` | [Your Google Maps API key] |
 
 ## Step 4: Redeploy

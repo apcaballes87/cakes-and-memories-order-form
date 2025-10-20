@@ -16,7 +16,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1VhejYSclqjnTZAbwsMwgTu
    ```bash
    npm install
    ```
-2. Set the `GEMINI_API_KEY` in `.env.local` to your Google Maps API key
+2. Set the `GEMINI_API_KEY` and `VITE_GOOGLE_MAPS_API_KEY` in `.env.local` to your API keys
 3. Run the app:
    ```bash
    npm run dev
@@ -51,6 +51,7 @@ For deployment instructions, please refer to:
 1. Set the required environment variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_GOOGLE_MAPS_API_KEY`
    - `GEMINI_API_KEY`
 
 2. Build the application:
@@ -66,5 +67,6 @@ Create a `.env.production` file with the following variables:
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 GEMINI_API_KEY=your_google_maps_api_key
 ```
