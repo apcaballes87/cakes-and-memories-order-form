@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Testing - Cakes and Memories</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#EC5685',
+                        primaryLight: '#F377BD',
+                        teal: '#33BECB',
+                        tealDark: '#20C6BC',
+                        grayText: '#BCBCBC',
+                        grayDark: '#8C8C8C',
+                        lightBg: '#FEF8FA'
+                    },
+                    borderRadius: {
+                        '2xl': '16px',
+                    },
+                    fontFamily: {
+                        sans: ['Poppins', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-lightBg min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 space-y-6">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-primary mb-2">Local Testing</h1>
+            <p class="text-grayDark">Cakes and Memories Order Form</p>
+        </div>
+        
+        <div class="space-y-4">
+            <div class="bg-lightBg rounded-xl p-4">
+                <h2 class="font-semibold text-lg text-primary mb-2">Test URLs</h2>
+                <p class="text-grayDark text-sm mb-3">Click on any of these links to test the application:</p>
+                
+                <div class="space-y-3">
+                    <a href="/order/default-user/1" class="block bg-primary hover:bg-primaryLight text-white font-medium py-3 px-4 rounded-xl text-center transition duration-300">
+                        Test Order Form (1 product)
+                    </a>
+                    
+                    <a href="/order/test-user/3" class="block bg-teal hover:bg-tealDark text-white font-medium py-3 px-4 rounded-xl text-center transition duration-300">
+                        Test Order Form (3 products)
+                    </a>
+                    
+                    <a href="/thank-you" class="block bg-grayText hover:bg-grayDark text-white font-medium py-3 px-4 rounded-xl text-center transition duration-300">
+                        Test Thank You Page
+                    </a>
+                </div>
+            </div>
+            
+            <div class="bg-lightBg rounded-xl p-4">
+                <h2 class="font-semibold text-lg text-primary mb-2">Development Server Info</h2>
+                <ul class="text-grayDark text-sm space-y-1">
+                    <li>• Local: <a href="http://localhost:3000" class="text-teal hover:underline">http://localhost:3000</a></li>
+                    <li>• Network: <a href="http://192.168.1.17:3000" class="text-teal hover:underline">http://192.168.1.17:3000</a></li>
+                    <li>• Port: 3000</li>
+                </ul>
+            </div>
+            
+            <div class="bg-lightBg rounded-xl p-4">
+                <h2 class="font-semibold text-lg text-primary mb-2">Next Steps</h2>
+                <ul class="text-grayDark text-sm space-y-1">
+                    <li>1. Test the application using the links above</li>
+                    <li>2. Verify all form elements work correctly</li>
+                    <li>3. Check that the map displays properly</li>
+                    <li>4. When ready, follow the deployment instructions</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
