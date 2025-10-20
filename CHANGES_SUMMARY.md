@@ -27,7 +27,7 @@
 ### 3. Set Delivery Location Modal - Independent Address Input ✅
 - Modified the AddressModal component to make the address input field independent from the Google map
 - **Added a labeled, blank text field** for the complete address
-- **Removed automatic filling** of the address field
+- **Prevented automatic filling** of the address field even when the map is moved
 - **Users must manually input** their complete address
 - Updated the confirmation logic to use the manually entered address
 - Added a more descriptive placeholder for the address input field
@@ -41,8 +41,8 @@
 
 The application has been tested locally and is working correctly with all the requested changes:
 
-- http://localhost:3010/order/default-user/1 - Test the order form with all changes (1 product)
-- http://localhost:3010/test-local.html - Use the testing page for quick access to different parts
+- http://localhost:3011/order/default-user/1 - Test the order form with all changes (1 product)
+- http://localhost:3011/test-local.html - Use the testing page for quick access to different parts
 
 ## Validation
 
