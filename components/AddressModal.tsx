@@ -124,9 +124,10 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
     };
     
     const handleConfirm = () => {
-        if (pinnedAddress && pinnedCoordinates) {
+        // Allow user to enter a complete address independently of the map
+        if (deliveryAddress) {
             onSelect({
-                address: deliveryAddress || pinnedAddress,
+                address: deliveryAddress,
                 coordinates: pinnedCoordinates,
             });
         }
@@ -182,13 +183,13 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
                         type="text"
                         value={deliveryAddress}
                         onChange={(e) => setDeliveryAddress(e.target.value)}
-                        placeholder="e.g. Unit 123, Bldg. 4, Street Name"
+                        placeholder="Enter your complete address here (e.g. Unit 123, Bldg. 4, Street Name, Barangay, City)"
                         className="w-full px-4 py-3 border border-primaryLight rounded-2xl focus:outline-none focus:ring-2 focus:ring-teal mb-4"
                     />
 
                     <button
                         onClick={handleConfirm}
-                        disabled={!pinnedAddress || !deliveryAddress}
+                        disabled={!deliveryAddress}
                         className="w-full bg-primary text-white font-bold py-3 px-4 rounded-2xl hover:bg-opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                     >
                         Confirm Address

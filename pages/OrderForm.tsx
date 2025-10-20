@@ -70,6 +70,23 @@ const OrderForm = (): React.JSX.Element => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numProducts, append, fields.length]);
 
+  useEffect(() => {
+    // Always ensure there's exactly one product (Product 1)
+    if (fields.length === 0) {
+      append({
+        productType: '', productSubType: '', otherProduct: '',
+        message: '', details: '', quantity: 1, candle: '', image: null,
+      });
+    }
+    // Remove any additional products if they exist
+    else if (fields.length > 1) {
+      for (let i = fields.length - 1; i > 0; i--) {
+        remove(i);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [append, fields.length, remove]);
+
   // Effect to clean up object URLs on unmount
   useEffect(() => {
     return () => {
@@ -342,21 +359,24 @@ const OrderForm = (): React.JSX.Element => {
             <Input<OrderFormData> label="Date of Event" name="dateEvent" register={register} type="date" required min={today} />
             <div className="mb-4">
                 <label htmlFor="timeEvent" className="block text-sm font-medium text-gray-700 mb-1">Time of Event</label>
-                <input
+                <select
                     id="timeEvent"
-                    type="time"
-                    min="09:00"
-                    max="20:00"
-                    {...register("timeEvent", {
-                        required: "Time is required",
-                        validate: value => {
-                            if (!value) return true;
-                            const hour = parseInt(value.split(':')[0]);
-                            return (hour >= 9 && hour < 20) || 'Please select a time between 9:00 AM and 8:00 PM';
-                        }
-                    })}
-                    className="w-full px-4 py-3 border border-primaryLight rounded-2xl focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal transition-all"
-                />
+                    {...register("timeEvent", { required: "Time is required" })}
+                    className="w-full px-4 py-3 border border-primaryLight rounded-2xl bg-white focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal transition-all"
+                >
+                    <option value="">Select a time</option>
+                    <option value="10:00">10:00 AM</option>
+                    <option value="11:00">11:00 AM</option>
+                    <option value="12:00">12:00 PM</option>
+                    <option value="13:00">1:00 PM</option>
+                    <option value="14:00">2:00 PM</option>
+                    <option value="15:00">3:00 PM</option>
+                    <option value="16:00">4:00 PM</option>
+                    <option value="17:00">5:00 PM</option>
+                    <option value="18:00">6:00 PM</option>
+                    <option value="19:00">7:00 PM</option>
+                    <option value="20:00">8:00 PM</option>
+                </select>
                 {errors.timeEvent && <p className="text-red-500 text-xs mt-1">{errors.timeEvent.message}</p>}
             </div>
           </FormSection>
@@ -366,16 +386,7 @@ const OrderForm = (): React.JSX.Element => {
               const { onChange: formImageOnChange, ...restImageRegister } = register(`products.${index}.image`);
               return (
               <div key={field.id} className="relative p-4 mb-4 border border-primaryLight rounded-2xl">
-                 {fields.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => remove(index)}
-                    className="absolute top-2 right-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                 )}
-                 <h3 className="font-semibold text-gray-800 mb-2">Product {index + 1}</h3>
+                 <h3 className="font-semibold text-gray-800 mb-2">Product 1</h3>
 
                 <Controller
                   control={control}
@@ -414,14 +425,13 @@ const OrderForm = (): React.JSX.Element => {
                         label="Please specify" 
                         name={`products.${index}.otherProduct`} 
                         register={register} 
-                        required 
                         placeholder="Specify product details"
                     />
                 )}
                  
                 <Textarea<OrderFormData> label="Message on Cake" name={`products.${index}.message`} register={register} placeholder="e.g. Happy Birthday, Juan!"/>
                 <Textarea<OrderFormData> label="Additional Details" name={`products.${index}.details`} register={register} placeholder="Design specifications, color, etc."/>
-                <Input<OrderFormData> label="Quantity" name={`products.${index}.quantity`} register={register} type="number" defaultValue={1} required min={1}/>
+                <Input<OrderFormData> label="Quantity" name={`products.${index}.quantity`} register={register} type="number" defaultValue={1} min={1}/>
                 <Input<OrderFormData> label="Candle" name={`products.${index}.candle`} register={register} placeholder="e.g. 1pc stick candle"/>
                 <div className="mb-4">
                    <label className="block text-sm font-medium text-gray-700 mb-1">Upload Image</label>
@@ -474,15 +484,7 @@ const OrderForm = (): React.JSX.Element => {
                 )}
               </div>
             )})}
-            {fields.length < 3 && (
-             <button
-                type="button"
-                onClick={() => append({ productType: '', productSubType: '', otherProduct: '', message: '', details: '', quantity: 1, candle: '', image: null })}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primaryLight text-primary rounded-2xl hover:bg-pink-50 transition-colors"
-             >
-                <Plus size={18} /> Add Another Product
-             </button>
-            )}
+            {/* Removed the "Add Another Product" button to ensure only Product 1 exists */}
           </FormSection>
 
           <FormSection title="Payment & Instructions">
