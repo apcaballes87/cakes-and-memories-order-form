@@ -56,20 +56,7 @@ const OrderForm = (): React.JSX.Element => {
     name: 'products',
   });
 
-  useEffect(() => {
-    const initialProductCount = parseInt(numProducts || '1', 10);
-    const currentProductCount = fields.length;
-    if (currentProductCount < initialProductCount) {
-      for (let i = 0; i < initialProductCount - currentProductCount; i++) {
-        append({
-          productType: '', productSubType: '', otherProduct: '',
-          message: '', details: '', quantity: 1, candle: '', image: null,
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numProducts, append, fields.length]);
-
+  // Only keep this useEffect to ensure exactly one product by default
   useEffect(() => {
     // Always ensure there's exactly one product by default (Product 1)
     if (fields.length === 0) {
