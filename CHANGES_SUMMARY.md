@@ -2,12 +2,13 @@
 
 ## Implemented Changes
 
-### 1. Product Details - Default to Product 1 Only
+### 1. Product Details - Default to Product 1 Only ✅
 - Modified the OrderForm to ensure only one product (Product 1) is displayed by default
-- Removed the "Add Another Product" button to prevent adding more products
-- Added a useEffect hook to ensure exactly one product is always present and remove any additional products
+- Kept the "Add Another Product" button so users can add more products if needed
+- Updated the product titles to show "Product 1", "Product 2", etc. correctly
+- Added logic to ensure exactly one product is always present initially
 
-### 2. Time Event - Dropdown Options
+### 2. Time Event - Dropdown Options ✅
 - Replaced the time input field with a dropdown select element
 - Added options from 10:00 AM to 8:00 PM (1 hour apart):
   - 10:00 AM
@@ -23,7 +24,7 @@
   - 8:00 PM
 - Added validation to ensure a time is selected
 
-### 3. Set Delivery Location Modal - Independent Address Input
+### 3. Set Delivery Location Modal - Independent Address Input ✅
 - Modified the AddressModal component to make the address input field independent from the Google map
 - Users can now enter their complete address in the text field without being constrained by the map location
 - Updated the confirmation logic to use the manually entered address
@@ -31,15 +32,15 @@
 
 ## Files Modified
 
-1. `pages/OrderForm.tsx` - Implemented Product 1 only and time dropdown
+1. `pages/OrderForm.tsx` - Implemented Product 1 only by default with ability to add more
 2. `components/AddressModal.tsx` - Made address input independent from Google map
 
 ## Testing
 
 The application has been tested locally and is working correctly with all the requested changes:
 
-- http://localhost:3001/order/default-user/1 - Test the order form with all changes
-- http://localhost:3001/test-local.html - Use the testing page for quick access to different parts
+- http://localhost:3002/order/default-user/1 - Test the order form with all changes
+- http://localhost:3002/test-local.html - Use the testing page for quick access to different parts
 
 ## Validation
 
