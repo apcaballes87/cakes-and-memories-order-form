@@ -26,21 +26,23 @@
 
 ### 3. Set Delivery Location Modal - Independent Address Input ✅
 - Modified the AddressModal component to make the address input field independent from the Google map
-- Users can now enter their complete address in the text field without being constrained by the map location
+- **Added a labeled, blank text field** for the complete address
+- **Removed automatic filling** of the address field
+- **Users must manually input** their complete address
 - Updated the confirmation logic to use the manually entered address
 - Added a more descriptive placeholder for the address input field
 
 ## Files Modified
 
 1. `pages/OrderForm.tsx` - Implemented Product 1 only by default with ability to add more
-2. `components/AddressModal.tsx` - Made address input independent from Google map
+2. `components/AddressModal.tsx` - Made address input independent from Google map with labeled blank field
 
 ## Testing
 
 The application has been tested locally and is working correctly with all the requested changes:
 
-- http://localhost:3009/order/default-user/1 - Test the order form with all changes (1 product)
-- http://localhost:3009/test-local.html - Use the testing page for quick access to different parts
+- http://localhost:3010/order/default-user/1 - Test the order form with all changes (1 product)
+- http://localhost:3010/test-local.html - Use the testing page for quick access to different parts
 
 ## Validation
 
