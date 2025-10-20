@@ -133,6 +133,13 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
         }
     };
 
+    // Reset the delivery address when the modal opens or when coordinates change
+    useEffect(() => {
+        if (isOpen) {
+            setDeliveryAddress(''); // Start with a blank address field
+        }
+    }, [isOpen, pinnedCoordinates]);
+
     if (!isOpen) return null;
 
     // FIX: The component now returns JSX, resolving the React.FC type error.
@@ -179,7 +186,9 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
                     <p className="text-sm font-medium text-gray-800 mb-1">Pinned Location:</p>
                     <p className="text-xs text-gray-600 mb-2 min-h-[16px]">{pinnedAddress || 'Drag map to set location'}</p>
 
+                    <label htmlFor="complete-address" className="block text-sm font-medium text-gray-700 mb-1">Complete Address</label>
                     <input
+                        id="complete-address"
                         type="text"
                         value={deliveryAddress}
                         onChange={(e) => setDeliveryAddress(e.target.value)}
