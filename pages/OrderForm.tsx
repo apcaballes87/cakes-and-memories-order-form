@@ -205,45 +205,29 @@ const OrderForm = (): React.JSX.Element => {
             }
         }
 
-        // Step 5: Insert data and get the new row's ID
+        // Step 5: Insert data and get the auto-generated order number from database
         const { data: insertedData, error: insertError } = await supabase
             .from('New Facebook Orders')
             .insert([orderData])
-            .select('id')
+            .select('id, order_number_text')
             .single();
 
         if (insertError) throw insertError;
         if (!insertedData) throw new Error('Failed to create order and retrieve order details.');
 
-        // Step 6: Count today's orders to generate sequential number
-        const today = new Date();
-        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
-        const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
+        // Step 6: Use the auto-generated order number from the database
+        let orderNumber = insertedData.order_number_text;
 
-        const { count, error: countError } = await supabase
-            .from('New Facebook Orders')
-            .select('id', { count: 'exact', head: true })
-            .gte('DateOrdered', todayStart)
-            .lt('DateOrdered', todayEnd);
-
-        if (countError) {
-            console.error('Error counting orders:', countError);
-            // Fallback to using ID if count fails
+        // Fallback: If order_number_text is not available, use the database ID
+        if (!orderNumber) {
+            console.warn('order_number_text not available, using fallback');
+            const today = new Date();
             const paddedId = String(insertedData.id).padStart(3, '0');
             const year = String(today.getFullYear()).slice(-2);
             const month = String(today.getMonth() + 1).padStart(2, '0');
             const day = String(today.getDate()).padStart(2, '0');
-            const orderNumber = `CEB-${year}${month}${day}-${paddedId}`;
-            navigate('/thank-you', { state: { orderNumber } });
-            return;
+            orderNumber = `CEB-${year}${month}${day}-${paddedId}`;
         }
-
-        // Generate order number with daily sequential count
-        const year = String(today.getFullYear()).slice(-2);
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        const sequentialNumber = String(count || 1).padStart(3, '0');
-        const orderNumber = `CEB-${year}${month}${day}-${sequentialNumber}`;
 
         navigate('/thank-you', { state: { orderNumber } });
     } catch (error) {
