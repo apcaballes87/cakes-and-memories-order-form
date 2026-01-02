@@ -103,9 +103,6 @@ const OrderForm = (): React.JSX.Element => {
             case 'Pickup at Treehouse':
                 finalAddress = 'PICKUP - Cakes and Memories Treehouse';
                 break;
-            case 'Pickup at Mandaue':
-                finalAddress = 'PICKUP - Cakes and Memories Mandaue';
-                break;
             case 'Delivery':
             default:
                 finalAddress = data.address;
@@ -267,7 +264,7 @@ const OrderForm = (): React.JSX.Element => {
                 render={({ field: { onChange, value }, fieldState: { error } }) => (
                     <ChoiceChipGroup
                         label="Delivery or Pickup?"
-                        options={["Delivery", "Pickup at Treehouse", "Pickup at Mandaue"]}
+                        options={["Delivery", "Pickup at Treehouse"]}
                         value={value}
                         onChange={onChange}
                         error={error?.message}
@@ -314,16 +311,6 @@ const OrderForm = (): React.JSX.Element => {
                     <p className="font-semibold text-primary">Pickup Location:</p>
                     <p className="text-gray-800">Cakes and Memories Treehouse</p>
                     <a href="https://maps.app.goo.gl/FPcQxJVM3taLjuzC7" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline font-medium text-sm mt-1 inline-block">
-                        View on Google Maps
-                    </a>
-                </div>
-            )}
-
-            {deliveryMethod === 'Pickup at Mandaue' && (
-                <div className="mt-4 p-4 bg-lightBg rounded-2xl border border-dashed border-primaryLight text-center">
-                    <p className="font-semibold text-primary">Pickup Location:</p>
-                    <p className="text-gray-800">Cakes and Memories Mandaue</p>
-                    <a href="https://maps.app.goo.gl/Y7eS8WfQqJWiRKrG8" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline font-medium text-sm mt-1 inline-block">
                         View on Google Maps
                     </a>
                 </div>
