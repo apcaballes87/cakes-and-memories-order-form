@@ -26,7 +26,7 @@ const OrderForm = (): React.JSX.Element => {
   const { subscriberId, numProducts } = useParams();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imagePreviews, setImagePreviews] = useState<{ [key: number]: string }>({});
+  const [imagePreviews, setImagePreviews] = useState<{ [key: number]: string[] }>({});
   const [paymentPreview, setPaymentPreview] = useState<string | null>(null);
   const [isAddressModalOpen, setAddressModalOpen] = useState(false);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
@@ -46,14 +46,14 @@ const OrderForm = (): React.JSX.Element => {
       timeEvent: '',
       products: [
         {
-          productType: '', 
-          productSubType: '', 
+          productType: '',
+          productSubType: '',
           otherProduct: '',
-          message: '', 
-          details: '', 
-          quantity: 1, 
-          candle: '', 
-          image: null,
+          message: '',
+          details: '',
+          quantity: 1,
+          candle: '',
+          images: [],
         }
       ],
       paymentOption: '',
@@ -70,9 +70,9 @@ const OrderForm = (): React.JSX.Element => {
   // Effect to clean up object URLs on unmount
   useEffect(() => {
     return () => {
-      Object.values(imagePreviews).forEach(URL.revokeObjectURL);
+      Object.values(imagePreviews).forEach((urls: string[]) => urls.forEach(URL.revokeObjectURL));
       if (paymentPreview) {
-          URL.revokeObjectURL(paymentPreview);
+        URL.revokeObjectURL(paymentPreview);
       }
     };
   }, [imagePreviews, paymentPreview]);
@@ -88,161 +88,171 @@ const OrderForm = (): React.JSX.Element => {
   const onSubmit = async (data: OrderFormData) => {
     setIsSubmitting(true);
     try {
-        // Step 1: Upload all images concurrently and get their URLs
-        const paymentScreenshotFile = data.paymentScreenshot?.[0];
-        const productFiles = data.products.map(p => p.image?.[0]);
+      // Step 1: Upload all images concurrently and get their URLs
+      const paymentScreenshotFile = data.paymentScreenshot?.[0];
 
-        const [paymentScreenshotUrl, ...productImageUrls] = await Promise.all([
-            paymentScreenshotFile ? uploadFile(paymentScreenshotFile) : Promise.resolve(null),
-            ...productFiles.map(file => file ? uploadFile(file) : Promise.resolve(null)),
-        ]);
-        
-        // Step 2: Construct the base order data object according to the mapping guide
-        let finalAddress = '';
-        switch(data.deliveryMethod) {
-            case 'Pickup at Treehouse':
-                finalAddress = 'PICKUP - Cakes and Memories Treehouse';
-                break;
-            case 'Delivery':
-            default:
-                finalAddress = data.address;
-                break;
+      // Upload payment screenshot
+      const paymentScreenshotUrl = paymentScreenshotFile ? await uploadFile(paymentScreenshotFile) : null;
+
+      // Upload all product images (multiple per product)
+      const productImageUrls: string[][] = await Promise.all(
+        data.products.map(async (product) => {
+          if (!product.images || product.images.length === 0) return [];
+          const urls = await Promise.all(
+            product.images.map(file => uploadFile(file))
+          );
+          return urls.filter((url): url is string => url !== null);
+        })
+      );
+
+      // Step 2: Construct the base order data object according to the mapping guide
+      let finalAddress = '';
+      switch (data.deliveryMethod) {
+        case 'Pickup at Treehouse':
+          finalAddress = 'PICKUP - Cakes and Memories Treehouse';
+          break;
+        case 'Delivery':
+        default:
+          finalAddress = data.address;
+          break;
+      }
+
+      const orderData: any = {
+        // Customer Info
+        facebookname: data.facebookname || '',
+        Name: data.name || '',
+        contact: data.contact || '',
+
+        // Delivery Info
+        Addres: finalAddress,
+        latitude: data.deliveryMethod === 'Delivery' ? deliveryCoordinates?.lat ?? 0 : 0,
+        longitude: data.deliveryMethod === 'Delivery' ? deliveryCoordinates?.lng ?? 0 : 0,
+        receiverName: data.isDifferentReceiver ? data.receiverName : '',
+        receiverContact: data.isDifferentReceiver ? data.receiverContact : '',
+
+        // Date & Time
+        DateOrdered: new Date().toISOString(),
+        DateEvent: data.dateEvent || '',
+        TimeEvent: data.timeEvent ? `${data.timeEvent}:00` : '',
+
+        // Payment & Additional
+        paymentOption: data.paymentOption || '',
+        Comment: data.instructions, // Temporarily set comment; will be updated with order number
+
+        // Auto-generated/System Fields
+        orderNumber: paymentScreenshotUrl || '',
+        numberproducts: data.products.length,
+        branch: "Cebu",
+        copiedToList: false,
+        hold: false,
+        manychatlink: '',
+      };
+
+      // Step 3: Map product data, ensuring all product columns are present
+      data.products.forEach((product, index) => {
+        if (index > 2) return;
+
+        let productDescription = product.productType;
+        if (product.productType === 'Other') {
+          productDescription = product.otherProduct;
+        } else if (product.productSubType) {
+          if (product.productSubType === 'Others') {
+            productDescription += ` - ${product.otherProduct || ''}`;
+          } else {
+            productDescription += ` - ${product.productSubType}`;
+          }
         }
 
-        const orderData: any = {
-            // Customer Info
-            facebookname: data.facebookname || '',
-            Name: data.name || '',
-            contact: data.contact || '',
+        // Get image URLs for this product - store as JSON array for multiple images
+        const imageUrls = productImageUrls[index] || [];
+        const imageValue = imageUrls.length > 0 ? JSON.stringify(imageUrls) : '';
 
-            // Delivery Info
-            Addres: finalAddress,
-            latitude: data.deliveryMethod === 'Delivery' ? deliveryCoordinates?.lat ?? 0 : 0,
-            longitude: data.deliveryMethod === 'Delivery' ? deliveryCoordinates?.lng ?? 0 : 0,
-            receiverName: data.isDifferentReceiver ? data.receiverName : '',
-            receiverContact: data.isDifferentReceiver ? data.receiverContact : '',
-
-            // Date & Time
-            DateOrdered: new Date().toISOString(),
-            DateEvent: data.dateEvent || '',
-            TimeEvent: data.timeEvent ? `${data.timeEvent}:00` : '',
-
-            // Payment & Additional
-            paymentOption: data.paymentOption || '',
-            Comment: data.instructions, // Temporarily set comment; will be updated with order number
-
-            // Auto-generated/System Fields
-            orderNumber: paymentScreenshotUrl || '',
-            numberproducts: data.products.length,
-            branch: "Cebu",
-            copiedToList: false,
-            hold: false,
-            manychatlink: '',
-        };
-
-        // Step 3: Map product data, ensuring all product columns are present
-        data.products.forEach((product, index) => {
-            if (index > 2) return; 
-
-            let productDescription = product.productType;
-            if (product.productType === 'Other') {
-                productDescription = product.otherProduct;
-            } else if (product.productSubType) {
-                if (product.productSubType === 'Others') {
-                    productDescription += ` - ${product.otherProduct || ''}`;
-                } else {
-                    productDescription += ` - ${product.productSubType}`;
-                }
-            }
-            
-            const imageUrl = productImageUrls[index] || '';
-
-            switch (index) {
-                case 0:
-                    orderData['Product1'] = productDescription;
-                    orderData['code1'] = '';
-                    orderData['Message1'] = product.message || '';
-                    orderData['details1'] = product.details || '';
-                    orderData['quantity1'] = product.quantity || 0;
-                    orderData['Price1'] = 0;
-                    orderData['Candle'] = product.candle || '';
-                    orderData['orderLink'] = imageUrl;
-                    break;
-                case 1:
-                    orderData['Product2'] = productDescription;
-                    orderData['code2'] = '';
-                    orderData['message2'] = product.message || '';
-                    orderData['details2'] = product.details || '';
-                    orderData['quantity2'] = product.quantity || 0;
-                    orderData['price2'] = 0;
-                    orderData['candle2'] = product.candle || '';
-                    orderData['pic2'] = imageUrl;
-                    break;
-                case 2:
-                    orderData['product3'] = productDescription;
-                    orderData['code3'] = '';
-                    orderData['message3'] = product.message || '';
-                    orderData['details3'] = product.details || '';
-                    orderData['qty3'] = String(product.quantity || 0);
-                    orderData['candle3'] = product.candle || '';
-                    orderData['pic3'] = imageUrl;
-                    break;
-            }
-        });
-        
-        // Step 4: Pad out unused product fields with default empty/zero values
-        for (let i = data.products.length; i < 3; i++) {
-             switch (i) {
-                case 1:
-                    orderData['Product2'] = ''; orderData['code2'] = ''; orderData['message2'] = ''; orderData['details2'] = ''; orderData['quantity2'] = 0; orderData['price2'] = 0; orderData['candle2'] = ''; orderData['pic2'] = '';
-                    break;
-                case 2:
-                    orderData['product3'] = ''; orderData['code3'] = ''; orderData['message3'] = ''; orderData['details3'] = ''; orderData['qty3'] = '0'; orderData['candle3'] = ''; orderData['pic3'] = '';
-                    break;
-            }
+        switch (index) {
+          case 0:
+            orderData['Product1'] = productDescription;
+            orderData['code1'] = '';
+            orderData['Message1'] = product.message || '';
+            orderData['details1'] = product.details || '';
+            orderData['quantity1'] = product.quantity || 0;
+            orderData['Price1'] = 0;
+            orderData['Candle'] = product.candle || '';
+            orderData['orderLink'] = imageValue;
+            break;
+          case 1:
+            orderData['Product2'] = productDescription;
+            orderData['code2'] = '';
+            orderData['message2'] = product.message || '';
+            orderData['details2'] = product.details || '';
+            orderData['quantity2'] = product.quantity || 0;
+            orderData['price2'] = 0;
+            orderData['candle2'] = product.candle || '';
+            orderData['pic2'] = imageValue;
+            break;
+          case 2:
+            orderData['product3'] = productDescription;
+            orderData['code3'] = '';
+            orderData['message3'] = product.message || '';
+            orderData['details3'] = product.details || '';
+            orderData['qty3'] = String(product.quantity || 0);
+            orderData['candle3'] = product.candle || '';
+            orderData['pic3'] = imageValue;
+            break;
         }
+      });
 
-        // Step 5: Insert data and get the auto-generated order number from database
-        const { data: insertedData, error: insertError } = await supabase
-            .from('New Facebook Orders')
-            .insert([orderData])
-            .select('id, order_number_text')
-            .single();
-
-        if (insertError) throw insertError;
-        if (!insertedData) throw new Error('Failed to create order and retrieve order details.');
-
-        // Step 6: Use the auto-generated order number from the database
-        let orderNumber = insertedData.order_number_text;
-
-        // Fallback: If order_number_text is not available, use the database ID
-        if (!orderNumber) {
-            console.warn('order_number_text not available, using fallback');
-            const today = new Date();
-            const paddedId = String(insertedData.id).padStart(3, '0');
-            const year = String(today.getFullYear()).slice(-2);
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const day = String(today.getDate()).padStart(2, '0');
-            orderNumber = `CEB-${year}${month}${day}-${paddedId}`;
+      // Step 4: Pad out unused product fields with default empty/zero values
+      for (let i = data.products.length; i < 3; i++) {
+        switch (i) {
+          case 1:
+            orderData['Product2'] = ''; orderData['code2'] = ''; orderData['message2'] = ''; orderData['details2'] = ''; orderData['quantity2'] = 0; orderData['price2'] = 0; orderData['candle2'] = ''; orderData['pic2'] = '';
+            break;
+          case 2:
+            orderData['product3'] = ''; orderData['code3'] = ''; orderData['message3'] = ''; orderData['details3'] = ''; orderData['qty3'] = '0'; orderData['candle3'] = ''; orderData['pic3'] = '';
+            break;
         }
+      }
 
-        navigate('/thank-you', { state: { orderNumber } });
+      // Step 5: Insert data and get the auto-generated order number from database
+      const { data: insertedData, error: insertError } = await supabase
+        .from('New Facebook Orders')
+        .insert([orderData])
+        .select('id, order_number_text')
+        .single();
+
+      if (insertError) throw insertError;
+      if (!insertedData) throw new Error('Failed to create order and retrieve order details.');
+
+      // Step 6: Use the auto-generated order number from the database
+      let orderNumber = insertedData.order_number_text;
+
+      // Fallback: If order_number_text is not available, use the database ID
+      if (!orderNumber) {
+        console.warn('order_number_text not available, using fallback');
+        const today = new Date();
+        const paddedId = String(insertedData.id).padStart(3, '0');
+        const year = String(today.getFullYear()).slice(-2);
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        orderNumber = `CEB-${year}${month}${day}-${paddedId}`;
+      }
+
+      navigate('/thank-you', { state: { orderNumber } });
     } catch (error) {
-        console.error('Submission failed. Full error:', error);
-        let message = 'An unknown error occurred. Please try again.';
-        if (error instanceof Error) {
-            message = error.message;
-        } else if (typeof error === 'object' && error !== null && 'message' in error) {
-            message = String((error as any).message);
-        } else if (typeof error === 'string') {
-            message = error;
-        }
-        alert(`Error submitting order: ${message}`);
+      console.error('Submission failed. Full error:', error);
+      let message = 'An unknown error occurred. Please try again.';
+      if (error instanceof Error) {
+        message = error.message;
+      } else if (typeof error === 'object' && error !== null && 'message' in error) {
+        message = String((error as any).message);
+      } else if (typeof error === 'string') {
+        message = error;
+      }
+      alert(`Error submitting order: ${message}`);
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
-  
+
   const today = new Date().toISOString().split('T')[0];
 
   return (
@@ -258,18 +268,18 @@ const OrderForm = (): React.JSX.Element => {
 
           <FormSection title="Delivery Information">
             <Controller
-                control={control}
-                name="deliveryMethod"
-                rules={{ required: 'Please select a delivery or pickup option' }}
-                render={({ field: { onChange, value }, fieldState: { error } }) => (
-                    <ChoiceChipGroup
-                        label="Delivery or Pickup?"
-                        options={["Delivery", "Pickup at Treehouse"]}
-                        value={value}
-                        onChange={onChange}
-                        error={error?.message}
-                    />
-                )}
+              control={control}
+              name="deliveryMethod"
+              rules={{ required: 'Please select a delivery or pickup option' }}
+              render={({ field: { onChange, value }, fieldState: { error } }) => (
+                <ChoiceChipGroup
+                  label="Delivery or Pickup?"
+                  options={["Delivery", "Pickup at Treehouse"]}
+                  value={value}
+                  onChange={onChange}
+                  error={error?.message}
+                />
+              )}
             />
             {deliveryMethod === 'Delivery' && (
               <>
@@ -293,236 +303,268 @@ const OrderForm = (): React.JSX.Element => {
                   <input type="hidden" {...register('address', { required: deliveryMethod === 'Delivery' ? 'Address is required for delivery' : false })} />
                   {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address.message}</p>}
                 </div>
-                
+
                 <MapPlaceholder address={addressValue} coordinates={deliveryCoordinates} />
-                
+
                 <Checkbox<OrderFormData> label="Different Receiver" name="isDifferentReceiver" register={register} />
                 {isDifferentReceiver && (
                   <div className="pl-4 border-l-2 border-primaryLight mt-4">
                     <Input<OrderFormData> label="Receiver's Name" name="receiverName" register={register} placeholder="Receiver's full name" isCapitalized required={isDifferentReceiver} />
-                    <Input<OrderFormData> label="Receiver's Contact" name="receiverContact" register={register} placeholder="09XX XXX XXXX" type="tel" isPhoneNumber required={isDifferentReceiver}/>
+                    <Input<OrderFormData> label="Receiver's Contact" name="receiverContact" register={register} placeholder="09XX XXX XXXX" type="tel" isPhoneNumber required={isDifferentReceiver} />
                   </div>
                 )}
               </>
             )}
 
             {deliveryMethod === 'Pickup at Treehouse' && (
-                <div className="mt-4 p-4 bg-lightBg rounded-2xl border border-dashed border-primaryLight text-center">
-                    <p className="font-semibold text-primary">Pickup Location:</p>
-                    <p className="text-gray-800">Cakes and Memories Treehouse</p>
-                    <a href="https://maps.app.goo.gl/FPcQxJVM3taLjuzC7" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline font-medium text-sm mt-1 inline-block">
-                        View on Google Maps
-                    </a>
-                </div>
+              <div className="mt-4 p-4 bg-lightBg rounded-2xl border border-dashed border-primaryLight text-center">
+                <p className="font-semibold text-primary">Pickup Location:</p>
+                <p className="text-gray-800">Cakes and Memories Treehouse</p>
+                <a href="https://maps.app.goo.gl/FPcQxJVM3taLjuzC7" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline font-medium text-sm mt-1 inline-block">
+                  View on Google Maps
+                </a>
+              </div>
             )}
           </FormSection>
 
           <FormSection title="Date & Time of Event">
             <Input<OrderFormData> label="Date of Event" name="dateEvent" register={register} type="date" required min={today} />
             <div className="mb-4">
-                <label htmlFor="timeEvent" className="block text-sm font-medium text-gray-700 mb-1">Time of Event</label>
-                <select
-                    id="timeEvent"
-                    {...register("timeEvent", { required: "Time is required" })}
-                    className="w-full px-4 py-3 border border-primaryLight rounded-2xl bg-white focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal transition-all"
-                >
-                    <option value="">Select a time</option>
-                    <option value="10:00">10:00 AM</option>
-                    <option value="11:00">11:00 AM</option>
-                    <option value="12:00">12:00 PM</option>
-                    <option value="13:00">1:00 PM</option>
-                    <option value="14:00">2:00 PM</option>
-                    <option value="15:00">3:00 PM</option>
-                    <option value="16:00">4:00 PM</option>
-                    <option value="17:00">5:00 PM</option>
-                    <option value="18:00">6:00 PM</option>
-                    <option value="19:00">7:00 PM</option>
-                    <option value="20:00">8:00 PM</option>
-                </select>
-                {errors.timeEvent && <p className="text-red-500 text-xs mt-1">{errors.timeEvent.message}</p>}
+              <label htmlFor="timeEvent" className="block text-sm font-medium text-gray-700 mb-1">Time of Event</label>
+              <select
+                id="timeEvent"
+                {...register("timeEvent", { required: "Time is required" })}
+                className="w-full px-4 py-3 border border-primaryLight rounded-2xl bg-white focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal transition-all"
+              >
+                <option value="">Select a time</option>
+                <option value="10:00">10:00 AM</option>
+                <option value="11:00">11:00 AM</option>
+                <option value="12:00">12:00 PM</option>
+                <option value="13:00">1:00 PM</option>
+                <option value="14:00">2:00 PM</option>
+                <option value="15:00">3:00 PM</option>
+                <option value="16:00">4:00 PM</option>
+                <option value="17:00">5:00 PM</option>
+                <option value="18:00">6:00 PM</option>
+                <option value="19:00">7:00 PM</option>
+                <option value="20:00">8:00 PM</option>
+              </select>
+              {errors.timeEvent && <p className="text-red-500 text-xs mt-1">{errors.timeEvent.message}</p>}
             </div>
           </FormSection>
 
           <FormSection title="Product Details">
             {fields.map((field, index) => {
-              const { onChange: formImageOnChange, ...restImageRegister } = register(`products.${index}.image`);
               return (
-              <div key={field.id} className="relative p-4 mb-4 border border-primaryLight rounded-2xl">
-                 {fields.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => remove(index)}
-                    className="absolute top-2 right-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                 )}
-                 <h3 className="font-semibold text-gray-800 mb-2">Product {index + 1}</h3>
-
-                <Controller
-                  control={control}
-                  name={`products.${index}.productType`}
-                  rules={{ required: 'Please select a product type' }}
-                  render={({ field: { onChange, value }, fieldState: { error } }) => (
-                    <ChoiceChipGroup
-                      label="Product Type"
-                      options={productOptions.types}
-                      value={value}
-                      onChange={onChange}
-                      error={error?.message}
-                    />
-                  )}
-                />
-
-                {watchedProducts[index]?.productType && productOptions.subTypes[watchedProducts[index].productType] && (
-                    <Controller
-                        control={control}
-                        name={`products.${index}.productSubType`}
-                        rules={{ required: 'Please select an option' }}
-                        render={({ field: { onChange, value }, fieldState: { error } }) => (
-                            <ChoiceChipGroup
-                                label="Details"
-                                options={productOptions.subTypes[watchedProducts[index].productType]}
-                                value={value}
-                                onChange={onChange}
-                                error={error?.message}
-                            />
-                        )}
-                    />
-                )}
-
-                {(watchedProducts[index]?.productType === 'Other' || watchedProducts[index]?.productSubType === 'Others') && (
-                    <Input<OrderFormData> 
-                        label="Please specify" 
-                        name={`products.${index}.otherProduct`} 
-                        register={register} 
-                        placeholder="Specify product details"
-                    />
-                )}
-                 
-                <Textarea<OrderFormData> label="Message on Cake" name={`products.${index}.message`} register={register} placeholder="e.g. Happy Birthday, Juan!"/>
-                <Textarea<OrderFormData> label="Additional Details" name={`products.${index}.details`} register={register} placeholder="Design specifications, color, etc."/>
-                <Input<OrderFormData> label="Quantity" name={`products.${index}.quantity`} register={register} type="number" defaultValue={1} min={1}/>
-                <Input<OrderFormData> label="Candle" name={`products.${index}.candle`} register={register} placeholder="e.g. 1pc stick candle"/>
-                <div className="mb-4">
-                   <label className="block text-sm font-medium text-gray-700 mb-1">Upload Image</label>
-                   <input 
-                      type="file" 
-                      accept="image/*"
-                      {...restImageRegister}
-                      onChange={(e) => {
-                        formImageOnChange(e);
-                        const file = e.target.files?.[0];
-                        if (imagePreviews[index]) {
-                          URL.revokeObjectURL(imagePreviews[index]);
-                        }
-                        if (file) {
-                          const url = URL.createObjectURL(file);
-                          setImagePreviews(prev => ({...prev, [index]: url}));
-                        } else {
-                          setImagePreviews(prev => {
-                            const newPreviews = {...prev};
-                            delete newPreviews[index];
-                            return newPreviews;
-                          });
-                        }
-                      }}
-                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-primary hover:file:bg-pink-100"
-                    />
-                </div>
-                {imagePreviews[index] && (
-                  <div className="mb-4 relative w-28 h-28">
-                    <img src={imagePreviews[index]} alt="Preview" className="w-full h-full object-cover rounded-2xl border border-gray-300" />
+                <div key={field.id} className="relative p-4 mb-4 border border-primaryLight rounded-2xl">
+                  {fields.length > 1 && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setValue(`products.${index}.image`, null);
-                        if (imagePreviews[index]) {
-                          URL.revokeObjectURL(imagePreviews[index]);
-                        }
-                        setImagePreviews(prev => {
-                          const newPreviews = {...prev};
-                          delete newPreviews[index];
-                          return newPreviews;
-                        });
-                      }}
-                      className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
-                      aria-label="Remove image"
+                      onClick={() => remove(index)}
+                      className="absolute top-2 right-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={18} />
                     </button>
+                  )}
+                  <h3 className="font-semibold text-gray-800 mb-2">Product {index + 1}</h3>
+
+                  <Controller
+                    control={control}
+                    name={`products.${index}.productType`}
+                    rules={{ required: 'Please select a product type' }}
+                    render={({ field: { onChange, value }, fieldState: { error } }) => (
+                      <ChoiceChipGroup
+                        label="Product Type"
+                        options={productOptions.types}
+                        value={value}
+                        onChange={onChange}
+                        error={error?.message}
+                      />
+                    )}
+                  />
+
+                  {watchedProducts[index]?.productType && productOptions.subTypes[watchedProducts[index].productType] && (
+                    <Controller
+                      control={control}
+                      name={`products.${index}.productSubType`}
+                      rules={{ required: 'Please select an option' }}
+                      render={({ field: { onChange, value }, fieldState: { error } }) => (
+                        <ChoiceChipGroup
+                          label="Details"
+                          options={productOptions.subTypes[watchedProducts[index].productType]}
+                          value={value}
+                          onChange={onChange}
+                          error={error?.message}
+                        />
+                      )}
+                    />
+                  )}
+
+                  {(watchedProducts[index]?.productType === 'Other' || watchedProducts[index]?.productSubType === 'Others') && (
+                    <Input<OrderFormData>
+                      label="Please specify"
+                      name={`products.${index}.otherProduct`}
+                      register={register}
+                      placeholder="Specify product details"
+                    />
+                  )}
+
+                  <Textarea<OrderFormData> label="Message on Cake" name={`products.${index}.message`} register={register} placeholder="e.g. Happy Birthday, Juan!" />
+                  <Textarea<OrderFormData> label="Additional Details" name={`products.${index}.details`} register={register} placeholder="Design specifications, color, etc." />
+                  <Input<OrderFormData> label="Quantity" name={`products.${index}.quantity`} register={register} type="number" defaultValue={1} min={1} />
+                  <Input<OrderFormData> label="Candle" name={`products.${index}.candle`} register={register} placeholder="e.g. 1pc stick candle" />
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Upload Images</label>
+
+                    {/* Image preview grid */}
+                    {imagePreviews[index] && imagePreviews[index].length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {imagePreviews[index].map((previewUrl, imgIndex) => (
+                          <div key={imgIndex} className="relative w-20 h-20">
+                            <img
+                              src={previewUrl}
+                              alt={`Preview ${imgIndex + 1}`}
+                              className="w-full h-full object-cover rounded-xl border border-gray-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Revoke the URL and remove the image
+                                URL.revokeObjectURL(previewUrl);
+                                setImagePreviews(prev => {
+                                  const newPreviews = { ...prev };
+                                  newPreviews[index] = newPreviews[index].filter((_, i) => i !== imgIndex);
+                                  if (newPreviews[index].length === 0) {
+                                    delete newPreviews[index];
+                                  }
+                                  return newPreviews;
+                                });
+                                // Update form state
+                                const currentImages = watch(`products.${index}.images`) || [];
+                                setValue(`products.${index}.images`, currentImages.filter((_, i) => i !== imgIndex));
+                              }}
+                              className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
+                              aria-label={`Remove image ${imgIndex + 1}`}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add image button - limit to 5 images */}
+                    {(!imagePreviews[index] || imagePreviews[index].length < 5) && (
+                      <label
+                        className="flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primaryLight text-primary rounded-2xl hover:bg-pink-50 cursor-pointer transition-colors"
+                        tabIndex={0}
+                        role="button"
+                        aria-label="Add image"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}
+                      >
+                        <Plus size={18} />
+                        <span className="text-sm font-medium">
+                          {imagePreviews[index]?.length ? 'Add Another Image' : 'Add Image'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              // Add to previews
+                              const url = URL.createObjectURL(file);
+                              setImagePreviews(prev => ({
+                                ...prev,
+                                [index]: [...(prev[index] || []), url]
+                              }));
+                              // Add to form state
+                              const currentImages = watch(`products.${index}.images`) || [];
+                              setValue(`products.${index}.images`, [...currentImages, file]);
+                            }
+                            // Reset input so same file can be selected again
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    )}
+
+                    {imagePreviews[index] && imagePreviews[index].length >= 5 && (
+                      <p className="text-xs text-gray-500 mt-1">Maximum 5 images per product</p>
+                    )}
                   </div>
-                )}
-              </div>
-            )})}
+                </div>
+              )
+            })}
             {fields.length < 3 && (
-             <button
+              <button
                 type="button"
-                onClick={() => append({ productType: '', productSubType: '', otherProduct: '', message: '', details: '', quantity: 1, candle: '', image: null })}
+                onClick={() => append({ productType: '', productSubType: '', otherProduct: '', message: '', details: '', quantity: 1, candle: '', images: [] })}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primaryLight text-primary rounded-2xl hover:bg-pink-50 transition-colors"
-             >
+              >
                 <Plus size={18} /> Add Another Product
-             </button>
+              </button>
             )}
           </FormSection>
 
           <FormSection title="Payment & Instructions">
-             <Controller
-                control={control}
-                name="paymentOption"
-                rules={{ required: 'Please select a payment option' }}
-                render={({ field: { onChange, value }, fieldState: { error } }) => (
-                    <ChoiceChipGroup
-                        label="Payment Option"
-                        options={["GCash", "Maya", "Bank Transfer", "Credit Card", "Store Payment"]}
-                        value={value}
-                        onChange={onChange}
-                        error={error?.message}
-                    />
-                )}
+            <Controller
+              control={control}
+              name="paymentOption"
+              rules={{ required: 'Please select a payment option' }}
+              render={({ field: { onChange, value }, fieldState: { error } }) => (
+                <ChoiceChipGroup
+                  label="Payment Option"
+                  options={["GCash", "Maya", "Bank Transfer", "Credit Card", "Store Payment"]}
+                  value={value}
+                  onChange={onChange}
+                  error={error?.message}
+                />
+              )}
             />
             <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Upload Payment Screenshot</label>
-                <input
-                    type="file"
-                    accept="image/*"
-                    {...paymentScreenshotRegister}
-                    onChange={(e) => {
-                        paymentScreenshotOnChange(e);
-                        const file = e.target.files?.[0];
-                        if (paymentPreview) {
-                            URL.revokeObjectURL(paymentPreview);
-                        }
-                        if (file) {
-                            const url = URL.createObjectURL(file);
-                            setPaymentPreview(url);
-                        } else {
-                            setPaymentPreview(null);
-                        }
-                    }}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-primary hover:file:bg-pink-100"
-                />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Upload Payment Screenshot</label>
+              <input
+                type="file"
+                accept="image/*"
+                {...paymentScreenshotRegister}
+                onChange={(e) => {
+                  paymentScreenshotOnChange(e);
+                  const file = e.target.files?.[0];
+                  if (paymentPreview) {
+                    URL.revokeObjectURL(paymentPreview);
+                  }
+                  if (file) {
+                    const url = URL.createObjectURL(file);
+                    setPaymentPreview(url);
+                  } else {
+                    setPaymentPreview(null);
+                  }
+                }}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-primary hover:file:bg-pink-100"
+              />
             </div>
-             {paymentPreview && (
-                <div className="mb-4 relative w-28 h-28">
-                    <img src={paymentPreview} alt="Payment Preview" className="w-full h-full object-cover rounded-2xl border border-gray-300" />
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setValue(`paymentScreenshot`, null);
-                            if (paymentPreview) {
-                                URL.revokeObjectURL(paymentPreview);
-                            }
-                            setPaymentPreview(null);
-                        }}
-                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
-                        aria-label="Remove payment screenshot"
-                    >
-                        <Trash2 size={14} />
-                    </button>
-                </div>
+            {paymentPreview && (
+              <div className="mb-4 relative w-28 h-28">
+                <img src={paymentPreview} alt="Payment Preview" className="w-full h-full object-cover rounded-2xl border border-gray-300" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValue(`paymentScreenshot`, null);
+                    if (paymentPreview) {
+                      URL.revokeObjectURL(paymentPreview);
+                    }
+                    setPaymentPreview(null);
+                  }}
+                  className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
+                  aria-label="Remove payment screenshot"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             )}
-             <Textarea<OrderFormData> label="Special Instructions" name="instructions" register={register} placeholder="Any other notes for your order."/>
+            <Textarea<OrderFormData> label="Special Instructions" name="instructions" register={register} placeholder="Any other notes for your order." />
           </FormSection>
 
           <button
@@ -535,11 +577,11 @@ const OrderForm = (): React.JSX.Element => {
                 <LoaderCircle className="animate-spin mr-2" size={20} />
                 Submitting...
               </>
-            ) : "Submit Order" }
+            ) : "Submit Order"}
           </button>
         </form>
       </main>
-      <AddressModal 
+      <AddressModal
         isOpen={isAddressModalOpen}
         onClose={() => setAddressModalOpen(false)}
         onSelect={(selection) => {

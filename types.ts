@@ -7,7 +7,7 @@ export interface Product {
   details: string;
   quantity: number;
   candle: string;
-  image: FileList | null;
+  images: File[];  // Multiple images per product
 }
 
 export interface OrderFormData {
