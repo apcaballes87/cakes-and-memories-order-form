@@ -327,10 +327,10 @@ const OrderForm = (): React.JSX.Element => {
             )}
           </FormSection>
 
-          <FormSection title="Date & Time of Event">
-            <Input<OrderFormData> label="Date of Event" name="dateEvent" register={register} type="date" required min={today} />
+          <FormSection title="Date & Time of Delivery / Pickup">
+            <Input<OrderFormData> label="Date of Delivery / Pickup" name="dateEvent" register={register} type="date" required min={today} />
             <div className="mb-4">
-              <label htmlFor="timeEvent" className="block text-sm font-medium text-gray-700 mb-1">Time of Event</label>
+              <label htmlFor="timeEvent" className="block text-sm font-medium text-gray-700 mb-1">Time of Delivery / Pickup</label>
               <select
                 id="timeEvent"
                 {...register("timeEvent", { required: "Time is required" })}
