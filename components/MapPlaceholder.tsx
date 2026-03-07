@@ -10,7 +10,7 @@ const MapPlaceholder = ({ address, coordinates }: MapPlaceholderProps): React.JS
     const [isLoading, setIsLoading] = useState(false);
 
     // Use environment variable for API key
-    const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDThtN_G7khUxdZy6rVPgI0zpsyPS30ryE';
+    const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyD3ZjERvU3smcnkQeyJAGOcem3x8gud-g0';
 
     useEffect(() => {
         // Reset map url when address is cleared
@@ -22,12 +22,12 @@ const MapPlaceholder = ({ address, coordinates }: MapPlaceholderProps): React.JS
         // If we have coordinates, use them directly for best performance
         if (coordinates) {
             generateStaticMap(coordinates.lat, coordinates.lng);
-        } 
+        }
         // If we have an address but no coordinates, geocode it as a fallback
         else if (address) {
             geocodeAddress(address);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [address, coordinates]);
 
     const geocodeAddress = async (addr: string) => {
@@ -37,7 +37,7 @@ const MapPlaceholder = ({ address, coordinates }: MapPlaceholderProps): React.JS
                 `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${API_KEY}`
             );
             const data = await response.json();
-            
+
             if (data.results && data.results[0]) {
                 const { lat, lng } = data.results[0].geometry.location;
                 generateStaticMap(lat, lng);
@@ -62,7 +62,7 @@ const MapPlaceholder = ({ address, coordinates }: MapPlaceholderProps): React.JS
             `&markers=color:0xEC5685%7C${lat},${lng}` +
             `&style=feature:poi%7Cvisibility:simplified` +
             `&key=${API_KEY}`;
-        
+
         setMapUrl(staticMapUrl);
     };
 
@@ -82,8 +82,8 @@ const MapPlaceholder = ({ address, coordinates }: MapPlaceholderProps): React.JS
     if (mapUrl) {
         return (
             <div className="w-full h-[200px] rounded-2xl overflow-hidden border border-gray-300 mb-4 relative group">
-                <img 
-                    src={mapUrl} 
+                <img
+                    src={mapUrl}
                     alt="Delivery location map"
                     className="w-full h-full object-cover"
                 />

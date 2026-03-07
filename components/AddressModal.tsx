@@ -40,7 +40,7 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
         if (!isOpen) return;
 
         const loader = new GoogleMapsLoader({
-            apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDThtN_G7khUxdZy6rVPgI0zpsyPS30ryE', // Use environment variable
+            apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyD3ZjERvU3smcnkQeyJAGOcem3x8gud-g0', // Use environment variable
             version: 'weekly',
             libraries: ['places', 'geocoding']
         });
@@ -48,9 +48,9 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
         loader.load().then((google) => {
             if (!mapRef.current || !inputRef.current) return;
             setIsLoading(false);
-            
+
             geocoder.current = new google.maps.Geocoder();
-            
+
             mapInstance.current = new google.maps.Map(mapRef.current, {
                 center: defaultCenter,
                 zoom: 15,
@@ -123,7 +123,7 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
             setError('Geolocation is not supported by your browser.');
         }
     };
-    
+
     const handleConfirm = () => {
         // Allow user to enter a complete address independently of the map
         if (deliveryAddress) {
@@ -153,12 +153,12 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
                         <X size={20} />
                     </button>
                 </header>
-                
+
                 <div className="relative flex-grow">
                     {isLoading && (
-                         <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-10">
+                        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-10">
                             <LoaderCircle className="animate-spin text-primary" size={32} />
-                         </div>
+                        </div>
                     )}
                     {error && (
                         <div className="absolute inset-0 bg-red-50 flex items-center justify-center z-10 p-4">
@@ -176,7 +176,7 @@ const AddressModal: React.FC<AddressModalProps> = ({ isOpen, onClose, onSelect }
 
                 <div className="p-4 bg-gray-50 border-t">
                     <div className="relative mb-2">
-                         <input
+                        <input
                             ref={inputRef}
                             type="text"
                             placeholder="Search for a location or address"
