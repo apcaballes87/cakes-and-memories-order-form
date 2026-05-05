@@ -21,10 +21,25 @@ const productOptions = {
   }
 };
 
+const mapProductSize = (sizeStr: string) => {
+  if (!sizeStr || sizeStr === 'N/A') return { type: '', subType: '', other: '' };
+  
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizedInput = normalize(sizeStr);
+
+  for (const [type, subs] of Object.entries(productOptions.subTypes)) {
+    const found = subs.find(s => normalize(s) === normalizedInput);
+    if (found) return { type, subType: found, other: '' };
+  }
+  
+  return { type: 'Other', subType: '', other: sizeStr };
+};
+
 
 const OrderForm = (): React.JSX.Element => {
-  const { subscriberId, numProducts } = useParams();
+  const { subscriberId, numProducts, facebookU } = useParams<{ subscriberId?: string; numProducts?: string; facebookU?: string }>();
   const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreviews, setImagePreviews] = useState<{ [key: number]: string[] }>({});
   const [paymentPreview, setPaymentPreview] = useState<string | null>(null);
@@ -62,10 +77,100 @@ const OrderForm = (): React.JSX.Element => {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, reset } = useFieldArray({
     control,
     name: 'products',
   });
+
+  // Hydrate form if facebookU is present
+  useEffect(() => {
+    const fetchPreFilledData = async () => {
+      if (!facebookU) return;
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('New PRE Facebook Orders')
+          .select('*')
+          .eq('facebookU', facebookU)
+          .single();
+
+        if (error) throw error;
+        if (data) {
+          const mappedProducts = [];
+          
+          // Map up to 3 products
+          for (let i = 1; i <= 3; i++) {
+            const productSize = data[`Product${i}`] || data[`product${i}`];
+            if (productSize && productSize !== 'N/A') {
+              const { type, subType, other } = mapProductSize(productSize);
+              
+              // Handle images for this product
+              let existingImages: string[] = [];
+              if (i === 1 && data.cakeimages) {
+                existingImages = Array.isArray(data.cakeimages) ? data.cakeimages : [];
+              } else if (i === 2 && data.pic2) {
+                existingImages = [data.pic2];
+              } else if (i === 3 && data.pic3) {
+                existingImages = [data.pic3];
+              }
+
+              mappedProducts.push({
+                productType: type,
+                productSubType: subType,
+                otherProduct: other,
+                message: data[`Message${i}`] || data[`message${i}`] || '',
+                details: data[`details${i}`] || '',
+                quantity: data[`quantity${i}`] || data[`qty${i}`] || 1,
+                candle: data[`Candle${i === 1 ? '' : i}`] || '',
+                images: [],
+                preExistingImages: existingImages
+              });
+            }
+          }
+
+          // If no products found, add one empty
+          if (mappedProducts.length === 0) {
+            mappedProducts.push({
+              productType: '',
+              productSubType: '',
+              otherProduct: '',
+              message: '',
+              details: '',
+              quantity: 1,
+              candle: '',
+              images: [],
+            });
+          }
+
+          setValue('facebookname', data.facebookname || '');
+          setValue('name', data.Name || '');
+          setValue('contact', data.contact || '');
+          setValue('address', data.Addres || '');
+          setValue('dateEvent', data.DateEvent || '');
+          setValue('timeEvent', data.TimeEvent ? data.TimeEvent.substring(0, 5) : '');
+          setValue('paymentOption', data.paymentOption || '');
+          setValue('instructions', data.Comment || '');
+          setValue('products', mappedProducts);
+          
+          if (data.orderNumber) {
+             setValue('preExistingPaymentScreenshot', data.orderNumber);
+          }
+
+          if (data.Addres?.toLowerCase().includes('pickup')) {
+            setValue('deliveryMethod', 'Pickup at Treehouse');
+          } else {
+            setValue('deliveryMethod', 'Delivery');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching pre-filled data:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPreFilledData();
+  }, [facebookU, setValue]);
 
   // Effect to clean up object URLs on unmount
   useEffect(() => {
@@ -92,16 +197,18 @@ const OrderForm = (): React.JSX.Element => {
       const paymentScreenshotFile = data.paymentScreenshot?.[0];
 
       // Upload payment screenshot
-      const paymentScreenshotUrl = paymentScreenshotFile ? await uploadFile(paymentScreenshotFile) : null;
+      const paymentScreenshotUrl = paymentScreenshotFile 
+        ? await uploadFile(paymentScreenshotFile) 
+        : (data.preExistingPaymentScreenshot || null);
 
       // Upload all product images (multiple per product)
       const productImageUrls: string[][] = await Promise.all(
         data.products.map(async (product) => {
-          if (!product.images || product.images.length === 0) return [];
-          const urls = await Promise.all(
-            product.images.map(file => uploadFile(file))
-          );
-          return urls.filter((url): url is string => url !== null);
+          const newUrls = (product.images && product.images.length > 0)
+            ? await Promise.all(product.images.map(file => uploadFile(file)))
+            : [];
+          const filteredNewUrls = newUrls.filter((url): url is string => url !== null);
+          return [...(product.preExistingImages || []), ...filteredNewUrls];
         })
       );
 
@@ -256,7 +363,13 @@ const OrderForm = (): React.JSX.Element => {
   const today = new Date().toISOString().split('T')[0];
 
   return (
-    <div className="font-sans">
+    <div className="font-sans relative">
+      {isLoading && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+          <LoaderCircle className="w-12 h-12 text-primary animate-spin mb-4" />
+          <p className="text-gray-600 font-medium">Fetching order details...</p>
+        </div>
+      )}
       <Header />
       <main className="max-w-md mx-auto p-4">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -415,6 +528,35 @@ const OrderForm = (): React.JSX.Element => {
                   <Input<OrderFormData> label="Candle" name={`products.${index}.candle`} register={register} placeholder="e.g. 1pc stick candle" />
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Upload Images</label>
+                    
+                    {/* Pre-existing images from DB */}
+                    {watchedProducts[index]?.preExistingImages && watchedProducts[index].preExistingImages!.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {watchedProducts[index].preExistingImages!.map((url, imgIndex) => (
+                          <div key={`existing-${imgIndex}`} className="relative w-20 h-20 group">
+                            <img
+                              src={url}
+                              alt={`Existing ${imgIndex + 1}`}
+                              className="w-full h-full object-cover rounded-xl border border-gray-300 opacity-80"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                               <span className="text-[8px] text-white font-bold bg-black/40 px-1 rounded">PRE-FILLED</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const current = [...(watchedProducts[index].preExistingImages || [])];
+                                current.splice(imgIndex, 1);
+                                setValue(`products.${index}.preExistingImages`, current);
+                              }}
+                              className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Image preview grid */}
                     {imagePreviews[index] && imagePreviews[index].length > 0 && (
@@ -545,6 +687,22 @@ const OrderForm = (): React.JSX.Element => {
                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-primary hover:file:bg-pink-100"
               />
             </div>
+            {/* Pre-existing payment screenshot */}
+            {!paymentPreview && watch('preExistingPaymentScreenshot') && (
+              <div className="mb-4 relative w-28 h-28 group">
+                <img src={watch('preExistingPaymentScreenshot')} alt="Payment Preview" className="w-full h-full object-cover rounded-2xl border border-gray-300 opacity-80" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity">
+                   <span className="text-[10px] text-white font-bold bg-black/40 px-2 py-1 rounded">PRE-FILLED</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setValue('preExistingPaymentScreenshot', '')}
+                  className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
             {paymentPreview && (
               <div className="mb-4 relative w-28 h-28">
                 <img src={paymentPreview} alt="Payment Preview" className="w-full h-full object-cover rounded-2xl border border-gray-300" />

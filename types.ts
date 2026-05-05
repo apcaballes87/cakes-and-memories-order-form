@@ -1,4 +1,3 @@
-// FIX: Removed conflicting self-import of 'Product'. The type is defined in this file.
 export interface Product {
   productType: string;
   productSubType: string;
@@ -7,7 +6,8 @@ export interface Product {
   details: string;
   quantity: number;
   candle: string;
-  images: File[];  // Multiple images per product
+  images: File[];
+  preExistingImages?: string[];
 }
 
 export interface OrderFormData {
@@ -25,4 +25,5 @@ export interface OrderFormData {
   paymentOption: string;
   instructions: string;
   paymentScreenshot: FileList | null;
+  preExistingPaymentScreenshot?: string;
 }

@@ -9,6 +9,7 @@ function App(): React.JSX.Element {
     <HashRouter>
       <Routes>
         <Route path="/order/:subscriberId/:numProducts" element={<OrderForm />} />
+        <Route path="/order/:facebookU" element={<OrderForm />} />
         <Route path="/thank-you" element={<ThankYou />} />
         <Route path="/" element={<Navigate to="/order/default-user/1" />} />
       </Routes>
