@@ -26,4 +26,5 @@ export interface OrderFormData {
   instructions: string;
   paymentScreenshot: FileList | null;
   preExistingPaymentScreenshot?: string;
+  price?: number;
 }

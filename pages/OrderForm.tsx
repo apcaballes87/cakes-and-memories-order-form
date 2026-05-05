@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase, uploadFile } from '../services/supabaseClient';
+import { sendMessengerConfirmation } from '../services/messengerService';
 import type { OrderFormData } from '../types';
 import Header from '../components/Header';
 import FormSection from '../components/FormSection';
 import { Input, Textarea, Checkbox, ChoiceChipGroup } from '../components/FormElements';
 import MapPlaceholder from '../components/MapPlaceholder';
 import AddressModal from '../components/AddressModal';
-import { Plus, Trash2, LoaderCircle } from 'lucide-react';
+import { Plus, Trash2, LoaderCircle, Users } from 'lucide-react';
 
 const productOptions = {
   types: ["1 Tier", "2 Tier", "3 Tier", "4 Tier", "Square or Rectangular", "Cupcakes & Pastries", "Other"],
@@ -35,9 +36,21 @@ const mapProductSize = (sizeStr: string) => {
   return { type: 'Other', subType: '', other: sizeStr };
 };
 
+// QR payment images to show per selected option
+const PAYMENT_QR_MAP: Record<string, string> = {
+  'GCash': 'https://congofivupobtfudnhni.supabase.co/storage/v1/object/public/files/paymentoptions/cakesandmemories-gcash.webp',
+  'Maya': 'https://congofivupobtfudnhni.supabase.co/storage/v1/object/public/files/paymentoptions/cakesandmemories-maya.webp',
+  'GoTyme': 'https://congofivupobtfudnhni.supabase.co/storage/v1/object/public/files/paymentoptions/cakesandmemories-gotyme.webp',
+  'BPI Bank Transfer': 'https://congofivupobtfudnhni.supabase.co/storage/v1/object/public/files/paymentoptions/cakesandmemories-bpi.webp',
+  'Unionbank': 'https://congofivupobtfudnhni.supabase.co/storage/v1/object/public/files/paymentoptions/cakesandmemories-unionbank.webp',
+  'Metrobank': 'https://congofivupobtfudnhni.supabase.co/storage/v1/object/public/files/paymentoptions/cakesandmemories-metrobank.webp',
+};
+
+const PAYMENT_OPTIONS = ["GCash", "Maya", "GoTyme", "BPI Bank Transfer", "Unionbank", "Metrobank", "Credit Card", "Store Payment"];
 
 const OrderForm = (): React.JSX.Element => {
   const { subscriberId, numProducts, facebookU } = useParams<{ subscriberId?: string; numProducts?: string; facebookU?: string }>();
+  const isDefaultUser = facebookU === 'default-user' || subscriberId === 'default-user' || (!facebookU && !subscriberId);
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,9 +58,10 @@ const OrderForm = (): React.JSX.Element => {
   const [paymentPreview, setPaymentPreview] = useState<string | null>(null);
   const [isAddressModalOpen, setAddressModalOpen] = useState(false);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
 
 
-  const { register, handleSubmit, control, watch, setValue, formState: { errors } } = useForm<OrderFormData>({
+  const { register, handleSubmit, control, watch, setValue, setError, formState: { errors } } = useForm<OrderFormData>({
     defaultValues: {
       facebookname: '',
       name: '',
@@ -74,6 +88,7 @@ const OrderForm = (): React.JSX.Element => {
       paymentOption: '',
       instructions: '',
       paymentScreenshot: null,
+      price: 0,
     },
   });
 
@@ -85,7 +100,7 @@ const OrderForm = (): React.JSX.Element => {
   // Hydrate form if facebookU is present
   useEffect(() => {
     const fetchPreFilledData = async () => {
-      if (!facebookU) return;
+      if (!facebookU || isDefaultUser) return;
       setIsLoading(true);
       try {
         const { data, error } = await supabase
@@ -95,6 +110,7 @@ const OrderForm = (): React.JSX.Element => {
           .single();
 
         if (error) throw error;
+        console.log('Fetched pre-filled data:', data);
         if (data) {
           const mappedProducts = [];
           
@@ -150,6 +166,7 @@ const OrderForm = (): React.JSX.Element => {
           setValue('timeEvent', data.TimeEvent ? data.TimeEvent.substring(0, 5) : '');
           setValue('paymentOption', data.paymentOption || '');
           setValue('instructions', data.Comment || '');
+          setValue('price', data.totalorderprice || data.price || data.Price || data.paymentamount || 0);
           setValue('products', mappedProducts);
           
           if (data.orderNumber) {
@@ -186,6 +203,8 @@ const OrderForm = (): React.JSX.Element => {
   const isDifferentReceiver = watch('isDifferentReceiver');
   const watchedProducts = watch('products');
   const addressValue = watch('address');
+  const watchPrice = watch('price');
+  const watchPaymentOption = watch('paymentOption');
 
   const { onChange: paymentScreenshotOnChange, ...paymentScreenshotRegister } = register("paymentScreenshot");
 
@@ -195,6 +214,20 @@ const OrderForm = (): React.JSX.Element => {
     try {
       // Step 1: Upload all images concurrently and get their URLs
       const paymentScreenshotFile = data.paymentScreenshot?.[0];
+
+      // Guard: require screenshot for all QR-based payment methods
+      const requiresScreenshot = !!PAYMENT_QR_MAP[data.paymentOption];
+      const hasScreenshot = !!paymentScreenshotFile || !!data.preExistingPaymentScreenshot;
+      if (requiresScreenshot && !hasScreenshot) {
+        setError('paymentScreenshot', {
+          type: 'manual',
+          message: `Please upload your ${data.paymentOption} payment screenshot before submitting.`,
+        });
+        setIsSubmitting(false);
+        // Scroll to the upload section
+        document.querySelector('input[type="file"][accept="image/*"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
 
       // Upload payment screenshot
       const paymentScreenshotUrl = paymentScreenshotFile 
@@ -319,7 +352,43 @@ const OrderForm = (): React.JSX.Element => {
         }
       }
 
-      // Step 5: Insert data and get the auto-generated order number from database
+      // Step 5: Handle Submission (Xendit vs Direct Insert)
+      // Only route to Xendit when the user explicitly chose "Credit Card"
+      if (!isDefaultUser && data.price && Number(data.price) > 0 && data.paymentOption === 'Credit Card') {
+        // Create Xendit Payment for pre-filled orders with Credit Card option
+        const xenditPayload = {
+            orderData: orderData,
+            amount: Number(data.price),
+            customerName: data.name,
+            userId: (facebookU && facebookU !== 'default-user') ? facebookU : '00000000-0000-0000-0000-000000000000'
+        };
+
+        const { data: xenditResponse, error: xenditError } = await supabase.functions.invoke('create-xendit-payment', {
+            body: xenditPayload
+        });
+
+        if (xenditError) {
+           console.error("Xendit edge function error:", xenditError);
+           throw xenditError;
+        }
+        if (!xenditResponse || !xenditResponse.paymentUrl) {
+            throw new Error('Failed to generate payment URL.');
+        }
+
+        // Send automated Messenger confirmation before redirect
+        if (subscriberId && subscriberId !== 'default-user') {
+          await sendMessengerConfirmation(
+            subscriberId,
+            "We received your order form! Please give our staff time to confirm the payment image you sent. Thank you!"
+          ).catch(err => console.error('Silent Messenger failure:', err));
+        }
+
+        // Redirect user to Xendit Payment Gateway
+        window.location.href = xenditResponse.paymentUrl;
+        return; // Execution stops here due to redirect
+      }
+
+      // Direct insert for normal form or zero price
       const { data: insertedData, error: insertError } = await supabase
         .from('New Facebook Orders')
         .insert([orderData])
@@ -341,6 +410,15 @@ const OrderForm = (): React.JSX.Element => {
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const day = String(today.getDate()).padStart(2, '0');
         orderNumber = `CEB-${year}${month}${day}-${paddedId}`;
+      }
+
+      // Step 7: Send automated Messenger confirmation
+      if (subscriberId && subscriberId !== 'default-user') {
+        // We don't await this to keep the redirection fast, but we catch errors
+        sendMessengerConfirmation(
+          subscriberId, 
+          "We received your order form! Please give our staff time to confirm the payment image you sent. Thank you!"
+        ).catch(err => console.error('Silent Messenger failure:', err));
       }
 
       navigate('/thank-you', { state: { orderNumber } });
@@ -651,6 +729,16 @@ const OrderForm = (): React.JSX.Element => {
           </FormSection>
 
           <FormSection title="Payment & Instructions">
+            {!isDefaultUser && (
+              <Input<OrderFormData> 
+                label="TOTAL ORDER PRICE" 
+                name="price" 
+                register={register} 
+                type="number" 
+                step="0.01" 
+                placeholder="0.00" 
+              />
+            )}
             <Controller
               control={control}
               name="paymentOption"
@@ -658,35 +746,55 @@ const OrderForm = (): React.JSX.Element => {
               render={({ field: { onChange, value }, fieldState: { error } }) => (
                 <ChoiceChipGroup
                   label="Payment Option"
-                  options={["GCash", "Maya", "Bank Transfer", "Credit Card", "Store Payment"]}
+                  options={PAYMENT_OPTIONS}
                   value={value}
                   onChange={onChange}
                   error={error?.message}
                 />
               )}
             />
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Upload Payment Screenshot</label>
-              <input
-                type="file"
-                accept="image/*"
-                {...paymentScreenshotRegister}
-                onChange={(e) => {
-                  paymentScreenshotOnChange(e);
-                  const file = e.target.files?.[0];
-                  if (paymentPreview) {
-                    URL.revokeObjectURL(paymentPreview);
-                  }
-                  if (file) {
-                    const url = URL.createObjectURL(file);
-                    setPaymentPreview(url);
-                  } else {
-                    setPaymentPreview(null);
-                  }
-                }}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-primary hover:file:bg-pink-100"
-              />
-            </div>
+
+            {/* QR Code display for e-wallet / bank transfer options */}
+            {watchPaymentOption && PAYMENT_QR_MAP[watchPaymentOption] && (
+              <div className="mb-4 flex flex-col items-center gap-2 animate-fade-in">
+                <p className="text-sm font-semibold text-gray-700">Scan to Pay via {watchPaymentOption}</p>
+                <img
+                  src={PAYMENT_QR_MAP[watchPaymentOption]}
+                  alt={`${watchPaymentOption} QR`}
+                  className="w-64 h-auto rounded-2xl border border-gray-200 shadow-md"
+                />
+                <p className="text-xs text-gray-500 text-center">After paying, please upload your payment screenshot below.</p>
+              </div>
+            )}
+
+            {/* Screenshot upload — hidden for Credit Card (handled by Xendit) and Store Payment */}
+            {watchPaymentOption !== 'Credit Card' && watchPaymentOption !== 'Store Payment' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Upload Payment Screenshot</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  {...paymentScreenshotRegister}
+                  onChange={(e) => {
+                    paymentScreenshotOnChange(e);
+                    const file = e.target.files?.[0];
+                    if (paymentPreview) {
+                      URL.revokeObjectURL(paymentPreview);
+                    }
+                    if (file) {
+                      const url = URL.createObjectURL(file);
+                      setPaymentPreview(url);
+                    } else {
+                      setPaymentPreview(null);
+                    }
+                  }}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-primary hover:file:bg-pink-100"
+                />
+                {errors.paymentScreenshot && (
+                  <p className="mt-1 text-sm text-red-500 font-medium">{errors.paymentScreenshot.message as string}</p>
+                )}
+              </div>
+            )}
             {/* Pre-existing payment screenshot */}
             {!paymentPreview && watch('preExistingPaymentScreenshot') && (
               <div className="mb-4 relative w-28 h-28 group">
@@ -725,18 +833,51 @@ const OrderForm = (): React.JSX.Element => {
             <Textarea<OrderFormData> label="Special Instructions" name="instructions" register={register} placeholder="Any other notes for your order." />
           </FormSection>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-primary text-white font-bold py-4 px-4 rounded-2xl hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all flex items-center justify-center"
-          >
-            {isSubmitting ? (
-              <>
-                <LoaderCircle className="animate-spin mr-2" size={20} />
-                Submitting...
-              </>
-            ) : "Submit Order"}
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 bg-primary text-white font-bold py-4 rounded-2xl hover:bg-opacity-90 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              {isSubmitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <LoaderCircle className="w-5 h-5 animate-spin" />
+                  Creating Order...
+                </span>
+              ) : (
+                !isDefaultUser && watchPrice && Number(watchPrice) > 0 && watchPaymentOption === 'Credit Card'
+                  ? `Pay via Credit Card ₱${Number(watchPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : "Submit Order"
+              )}
+            </button>
+
+            {/* Split with Friends — hidden for now */}
+            <button
+              type="button"
+              onClick={() => setIsSplitModalOpen(true)}
+              disabled={isSubmitting}
+              className="hidden flex-1 border-2 border-primary text-primary py-4 px-4 font-bold rounded-2xl transition-colors items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Users className="w-5 h-5" />
+              <span>Split with Friends</span>
+            </button>
+          </div>
+
+          {/* Show Xendit / Secure Payment trust badges only when Credit Card is selected */}
+          {!isDefaultUser && watchPaymentOption === 'Credit Card' && (
+            <div className="flex flex-wrap gap-6 items-center justify-center pt-2">
+              <img
+                src="https://cqmhanqnfybyxezhobkx.supabase.co/storage/v1/object/public/landingpage/xendit-blue.webp"
+                alt="Xendit"
+                className="h-10 w-auto object-contain"
+              />
+              <img
+                src="https://cqmhanqnfybyxezhobkx.supabase.co/storage/v1/object/public/landingpage/securepayment-green.webp"
+                alt="Secure Payment"
+                className="h-10 w-auto object-contain"
+              />
+            </div>
+          )}
         </form>
       </main>
       <AddressModal
