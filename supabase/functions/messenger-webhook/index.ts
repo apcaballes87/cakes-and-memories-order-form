@@ -112,12 +112,17 @@ async function classifyImageWithGeminiPro(imageUrl) {
       {
         parts: [
           {
-            text: "Classify this image as exactly one of: cake, payment, or subject.\n" +
-                  "➡️ **Payment** ONLY if it is a receipt, invoice, or payment screenshot clearly showing a TOTAL amount and typical receipt layout (e.g. the word 'Total Amount','Total Payment', itemized list, bank logos, barcodes).\n" +
-                  "➡️ **Cake** if it’s a photo of a cake, even if there’s a price tag or decoration showing a number. Or if its a person holding a cake. \n" +
-                  "➡️ Otherwise **subject** (e.g. documents without totals, random photos).\n" +
-                  "Reply with only the label (\"cake\", \"payment\", or \"subject\"). " +
-                  "If you choose payment, append the amount (e.g. “payment: 1,234.56”)."
+            text: `Analyze this image and return a JSON object with:
+1. "label": Exactly one of "cake", "payment", or "subject".
+2. "amount": If it's a payment receipt, the total amount as a number (otherwise null).
+3. "description": A concise, one-sentence description of the image content.
+
+Rules:
+- "payment" ONLY for receipts/invoices with a total.
+- "cake" for cakes or people with cakes.
+- "subject" for others.
+
+Return ONLY raw JSON.`
           },
           {
             inline_data: {
@@ -137,26 +142,28 @@ async function classifyImageWithGeminiPro(imageUrl) {
     },
     body: JSON.stringify(body)
   });
+  
   if (!r.ok) {
     const txt = await r.text();
-    throw new Error(`Gemini error ${r.status}: ${txt}`);
+    console.error(`Gemini analysis failed: ${txt}`);
+    return { label: "subject", amount: null, description: "Analysis failed" };
   }
+
   const json = await r.json();
-  const reply = (json.candidates?.[0]?.content?.parts?.[0]?.text ?? "").toLowerCase().trim();
-  const amtMatch = reply.match(/payment[:\s]*[₱\$]?\s*([\d,]+(?:\.\d{1,2})?)/);
-  if (amtMatch) {
-    const raw = amtMatch[1].replace(/,/g, "");
+  const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  
+  try {
+    const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const result = JSON.parse(cleaned);
     return {
-      label: "payment",
-      amount: parseFloat(raw)
+      label: result.label || "subject",
+      amount: typeof result.amount === 'number' ? result.amount : null,
+      description: result.description || "No description provided"
     };
+  } catch (err) {
+    console.error("JSON parse failed for Gemini response:", rawText);
+    return { label: "subject", amount: null, description: rawText.slice(0, 200) };
   }
-  if (reply.includes("cake")) return {
-    label: "cake"
-  };
-  return {
-    label: "subject"
-  };
 }
 
 serve(async (req) => {
@@ -320,9 +327,22 @@ serve(async (req) => {
         let paymentamount = row?.paymentamount;
 
         for (const url of publicUrls) {
-          console.log(`Classifying image via Gemini 3.1 Flash Lite: ${url}`);
+          console.log(`Analyzing image with Gemini Vision: ${url}`);
           const result = await classifyImageWithGeminiPro(url);
-          console.log(`Gemini classification: ${result.label}${result.amount ? ` (Amount: ${result.amount})` : ""}`);
+          console.log(`Analysis result: ${result.label}${result.amount ? ` (Amount: ${result.amount})` : ""}`);
+
+          // Save to photodump table
+          const { error: dumpErr } = await supabase
+            .from('"aichatassistant(photodump)"')
+            .insert({
+              psid: subscriberId,
+              imagelink: url,
+              description: result.description
+            });
+          
+          if (dumpErr) {
+            console.error("Failed to save to photodump table:", dumpErr.message);
+          }
 
           if (result.label === "cake") {
             cakeimages.push(url);

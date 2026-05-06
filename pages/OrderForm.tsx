@@ -311,6 +311,7 @@ const OrderForm = (): React.JSX.Element => {
         hold: false,
         manychatlink: '',
         facebookU: isDefaultUser ? null : (facebookU || subscriberId || null),
+        subscriberid: isDefaultUser ? null : (activeSubscriberId || null),
       };
 
       // Step 3: Map product data, ensuring all product columns are present
@@ -415,6 +416,14 @@ const OrderForm = (): React.JSX.Element => {
             .eq('facebookU', facebookU);
         }
 
+        // Reset AI Chat Assistant firstmessagedate
+        if (activeSubscriberId && activeSubscriberId !== 'default-user') {
+          await supabase
+            .from('aichatassistant')
+            .update({ firstmessagedate: null })
+            .eq('subscriberid', activeSubscriberId);
+        }
+
         // Redirect user to Xendit Payment Gateway
         window.location.href = xenditResponse.paymentUrl;
         return; // Execution stops here due to redirect
@@ -457,6 +466,14 @@ const OrderForm = (): React.JSX.Element => {
           .from('New PRE Facebook Orders')
           .update({ submitted: true })
           .eq('facebookU', facebookU);
+      }
+
+      // Reset AI Chat Assistant firstmessagedate
+      if (activeSubscriberId && activeSubscriberId !== 'default-user') {
+        await supabase
+          .from('aichatassistant')
+          .update({ firstmessagedate: null })
+          .eq('subscriberid', activeSubscriberId);
       }
 
       navigate('/thank-you', { state: { orderNumber } });
