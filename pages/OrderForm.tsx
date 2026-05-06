@@ -189,7 +189,20 @@ const OrderForm = (): React.JSX.Element => {
           setValue('products', mappedProducts);
           
           if (data.subscriberid) {
-            setActiveSubscriberId(data.subscriberid);
+            setActiveSubscriberId(String(data.subscriberid).trim());
+          } else if (facebookU) {
+            // Fallback: Check aichatassistant table using the UUID
+            const { data: chatData } = await supabase
+              .from('aichatassistant')
+              .select('subscriberid')
+              .eq('newfacebookU', facebookU)
+              .maybeSingle();
+            
+            if (chatData?.subscriberid) {
+              const trimmedId = String(chatData.subscriberid).trim();
+              setActiveSubscriberId(trimmedId);
+              console.log('Found subscriberid from aichatassistant fallback:', trimmedId);
+            }
           }
 
           if (data.orderNumber) {
