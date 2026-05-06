@@ -310,7 +310,7 @@ const OrderForm = (): React.JSX.Element => {
         copiedToList: false,
         hold: false,
         manychatlink: '',
-        facebookU: facebookU || '',
+        facebookU: isDefaultUser ? null : (facebookU || subscriberId || null),
       };
 
       // Step 3: Map product data, ensuring all product columns are present
@@ -385,7 +385,7 @@ const OrderForm = (): React.JSX.Element => {
             orderData: orderData,
             amount: Number(data.price),
             customerName: data.name,
-            userId: (facebookU && facebookU !== 'default-user') ? facebookU : '00000000-0000-0000-0000-000000000000'
+            userId: isDefaultUser ? '00000000-0000-0000-0000-000000000000' : (facebookU || subscriberId || '00000000-0000-0000-0000-000000000000')
         };
 
         const { data: xenditResponse, error: xenditError } = await supabase.functions.invoke('create-xendit-payment', {
