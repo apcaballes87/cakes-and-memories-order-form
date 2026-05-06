@@ -17,7 +17,7 @@ export const uploadFile = async (file: File): Promise<string | null> => {
 
   const fileExt = file.name.split('.').pop();
   const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
-  const bucketName = 'cakepics'; // FIX: Corrected bucket name
+  const bucketName = 'files'; // FIX: Use the standard 'files' bucket
   
   const { error: uploadError } = await supabase.storage
     .from(bucketName)

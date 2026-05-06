@@ -1,52 +1,32 @@
-/**
- * Service to handle Facebook Messenger interactions
- */
-
-const FB_PAGE_ACCESS_TOKEN = import.meta.env.VITE_FB_PAGE_ACCESS_TOKEN;
-const FB_GRAPH_API_VERSION = 'v20.0';
-const FB_GRAPH_API_URL = `https://graph.facebook.com/${FB_GRAPH_API_VERSION}/me/messages`;
+import { supabase } from './supabaseClient';
 
 /**
- * Sends a confirmation message to a customer on Facebook Messenger
+ * Sends a confirmation message to a customer on Facebook Messenger via Supabase Edge Function
  * @param psid The Page-Scoped ID of the user
  * @param message The message text to send
  * @returns Promise with the API response
  */
 export const sendMessengerConfirmation = async (psid: string, message: string): Promise<any> => {
-  if (!FB_PAGE_ACCESS_TOKEN) {
-    console.error('VITE_FB_PAGE_ACCESS_TOKEN is not configured');
-    return { error: 'Token not configured' };
-  }
-
   if (!psid || psid === 'default-user') {
     console.warn('Invalid PSID provided for Messenger confirmation:', psid);
     return { error: 'Invalid PSID' };
   }
 
   try {
-    const response = await fetch(`${FB_GRAPH_API_URL}?access_token=${FB_PAGE_ACCESS_TOKEN}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        recipient: { id: psid },
-        message: { text: message },
-        messaging_type: 'RESPONSE', // Using RESPONSE as this is a reply to an order form interaction
-      }),
+    console.log(`Invoking send-messenger-message edge function for PSID: ${psid}`);
+    const { data, error } = await supabase.functions.invoke('send-messenger-message', {
+      body: { psid, message }
     });
 
-    const result = await response.json();
-    
-    if (!response.ok) {
-      console.error('Facebook Graph API error:', result);
-      return { error: result.error || 'Failed to send message' };
+    if (error) {
+      console.error('Error returned from send-messenger-message edge function:', error);
+      return { error: error.message || 'Failed to invoke edge function' };
     }
 
-    console.log('Messenger confirmation sent successfully:', result);
-    return result;
+    console.log('Messenger confirmation sent successfully via edge function:', data);
+    return data;
   } catch (error) {
-    console.error('Error sending Messenger confirmation:', error);
+    console.error('Exception when invoking send-messenger-message edge function:', error);
     return { error };
   }
 };

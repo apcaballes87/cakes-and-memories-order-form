@@ -54,11 +54,13 @@ const OrderForm = (): React.JSX.Element => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeSubscriberId, setActiveSubscriberId] = useState<string | null>(subscriberId || null);
   const [imagePreviews, setImagePreviews] = useState<{ [key: number]: string[] }>({});
   const [paymentPreview, setPaymentPreview] = useState<string | null>(null);
   const [isAddressModalOpen, setAddressModalOpen] = useState(false);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  
 
 
   const { register, handleSubmit, control, watch, setValue, setError, formState: { errors } } = useForm<OrderFormData>({
@@ -112,6 +114,23 @@ const OrderForm = (): React.JSX.Element => {
         if (error) throw error;
         console.log('Fetched pre-filled data:', data);
         if (data) {
+          // Check if already submitted
+          if (data.submitted) {
+            const { data: submittedOrder } = await supabase
+              .from('New Facebook Orders')
+              .select('order_number_text')
+              .eq('facebookU', facebookU)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            // Always navigate if marked as submitted
+            navigate('/thank-you', { 
+              state: { orderNumber: submittedOrder?.order_number_text },
+              replace: true 
+            });
+            return;
+          }
           const mappedProducts = [];
           
           // Map up to 3 products
@@ -169,6 +188,10 @@ const OrderForm = (): React.JSX.Element => {
           setValue('price', data.totalorderprice || data.price || data.Price || data.paymentamount || 0);
           setValue('products', mappedProducts);
           
+          if (data.subscriberid) {
+            setActiveSubscriberId(data.subscriberid);
+          }
+
           if (data.orderNumber) {
              setValue('preExistingPaymentScreenshot', data.orderNumber);
           }
@@ -187,7 +210,7 @@ const OrderForm = (): React.JSX.Element => {
     };
 
     fetchPreFilledData();
-  }, [facebookU, setValue]);
+  }, [facebookU, isDefaultUser, navigate, setValue]);
 
   // Effect to clean up object URLs on unmount
   useEffect(() => {
@@ -283,9 +306,11 @@ const OrderForm = (): React.JSX.Element => {
         orderNumber: paymentScreenshotUrl || '',
         numberproducts: data.products.length,
         branch: "Cebu",
+        payment: data.price || 0,
         copiedToList: false,
         hold: false,
         manychatlink: '',
+        facebookU: facebookU || '',
       };
 
       // Step 3: Map product data, ensuring all product columns are present
@@ -376,11 +401,18 @@ const OrderForm = (): React.JSX.Element => {
         }
 
         // Send automated Messenger confirmation before redirect
-        if (subscriberId && subscriberId !== 'default-user') {
-          await sendMessengerConfirmation(
-            subscriberId,
-            "We received your order form! Please give our staff time to confirm the payment image you sent. Thank you!"
-          ).catch(err => console.error('Silent Messenger failure:', err));
+        if (activeSubscriberId && activeSubscriberId !== 'default-user') {
+          const fbMessage = `We received your order form! A representative will message you soon to confirm your order details. Thank you!`;
+          sendMessengerConfirmation(activeSubscriberId, fbMessage)
+            .catch(err => console.error('Silent Messenger failure:', err));
+        }
+
+        // Update pre-filled order status
+        if (facebookU && !isDefaultUser) {
+          await supabase
+            .from('New PRE Facebook Orders')
+            .update({ submitted: true })
+            .eq('facebookU', facebookU);
         }
 
         // Redirect user to Xendit Payment Gateway
@@ -413,12 +445,18 @@ const OrderForm = (): React.JSX.Element => {
       }
 
       // Step 7: Send automated Messenger confirmation
-      if (subscriberId && subscriberId !== 'default-user') {
-        // We don't await this to keep the redirection fast, but we catch errors
-        sendMessengerConfirmation(
-          subscriberId, 
-          "We received your order form! Please give our staff time to confirm the payment image you sent. Thank you!"
-        ).catch(err => console.error('Silent Messenger failure:', err));
+      if (activeSubscriberId && activeSubscriberId !== 'default-user') {
+        const fbMessage = `We received your order form! Your order number is ${orderNumber}. Please give our staff time to confirm the payment image you sent. Thank you!`;
+        sendMessengerConfirmation(activeSubscriberId, fbMessage)
+          .catch(err => console.error('Silent Messenger failure:', err));
+      }
+
+      // Update pre-filled order status
+      if (facebookU && !isDefaultUser) {
+        await supabase
+          .from('New PRE Facebook Orders')
+          .update({ submitted: true })
+          .eq('facebookU', facebookU);
       }
 
       navigate('/thank-you', { state: { orderNumber } });
