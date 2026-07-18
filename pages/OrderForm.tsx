@@ -251,19 +251,7 @@ const OrderForm = (): React.JSX.Element => {
       // Step 1: Upload all images concurrently and get their URLs
       const paymentScreenshotFile = data.paymentScreenshot?.[0];
 
-      // Guard: require screenshot for all QR-based payment methods
-      const requiresScreenshot = !!PAYMENT_QR_MAP[data.paymentOption];
-      const hasScreenshot = !!paymentScreenshotFile || !!data.preExistingPaymentScreenshot;
-      if (requiresScreenshot && !hasScreenshot) {
-        setError('paymentScreenshot', {
-          type: 'manual',
-          message: `Please upload your ${data.paymentOption} payment screenshot before submitting.`,
-        });
-        setIsSubmitting(false);
-        // Scroll to the upload section
-        document.querySelector('input[type="file"][accept="image/*"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-      }
+      // Payment screenshot is optional for all payment methods
 
       // Upload payment screenshot
       const paymentScreenshotUrl = paymentScreenshotFile 
