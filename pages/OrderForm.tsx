@@ -823,8 +823,8 @@ const OrderForm = (): React.JSX.Element => {
               </div>
             )}
 
-            {/* Screenshot upload — hidden for Credit Card (handled by Xendit) and Store Payment */}
-            {watchPaymentOption !== 'Credit Card' && watchPaymentOption !== 'Store Payment' && (
+            {/* Screenshot upload is available for online payments; store payment does not need one. */}
+            {watchPaymentOption !== 'Store Payment' && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Upload Payment Screenshot</label>
                 <input
