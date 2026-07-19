@@ -7,8 +7,28 @@ const ThankYou = (): React.JSX.Element => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
-  const isPaymentSuccess = searchParams.get('payment') === 'success';
-  const queryOrderId = searchParams.get('orderId');
+  // Helper to extract query parameters from both URL search string (before hash) and hash query string (after hash)
+  const getQueryParam = (name: string): string | null => {
+    // 1. Try search parameters from the main URL search string (before hash)
+    const urlParams = new URLSearchParams(window.location.search);
+    let val = urlParams.get(name);
+    if (val) return val;
+
+    // 2. Try search parameters from the hash fragment query string (after hash)
+    const hash = window.location.hash;
+    const hashQueryIndex = hash.indexOf('?');
+    if (hashQueryIndex !== -1) {
+      const hashParams = new URLSearchParams(hash.substring(hashQueryIndex));
+      val = hashParams.get(name);
+      if (val) return val;
+    }
+
+    // 3. Fallback to the router's useSearchParams
+    return searchParams.get(name);
+  };
+
+  const isPaymentSuccess = getQueryParam('payment') === 'success';
+  const queryOrderId = getQueryParam('orderId');
   const [isVerifying, setIsVerifying] = React.useState(isPaymentSuccess && !!queryOrderId);
   const [verificationError, setVerificationError] = React.useState<string | null>(null);
   

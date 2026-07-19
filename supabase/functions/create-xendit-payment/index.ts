@@ -50,8 +50,8 @@ serve(async (req) => {
       payer_email: customerEmail || 'customer@example.com',
       description: `Payment for Pre-filled Order ${pendingOrderId}`,
       // Make sure the origin matches where the frontend is hosted
-      success_redirect_url: `${req.headers.get('origin') || 'http://localhost:3003'}/#/thank-you?payment=success&orderId=${pendingOrderId}`,
-      failure_redirect_url: `${req.headers.get('origin') || 'http://localhost:3003'}`,
+      success_redirect_url: `${req.headers.get('origin') || 'https://cakes-and-memories-order-form.vercel.app'}/#/thank-you?payment=success&orderId=${pendingOrderId}`,
+      failure_redirect_url: `${req.headers.get('origin') || 'https://cakes-and-memories-order-form.vercel.app'}`,
       customer: {
         given_names: customerName || 'Customer',
         email: customerEmail || 'customer@example.com'

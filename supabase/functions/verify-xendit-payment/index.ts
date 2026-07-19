@@ -14,11 +14,26 @@ serve(async (req) => {
   }
 
   try {
-    const { invoiceId, orderId } = await req.json()
+    const body = await req.json()
+
+    // Support both client-side parameters (invoiceId, orderId)
+    // and Xendit webhook callback payload (id, external_id)
+    const invoiceId = body.invoiceId || body.id
+    let orderId = body.orderId
+
+    if (!orderId && body.external_id) {
+      // Strip "order_" prefix if present (external_id is typically "order_123")
+      if (body.external_id.startsWith('order_')) {
+        orderId = body.external_id.replace('order_', '')
+      } else {
+        orderId = body.external_id
+      }
+    }
 
     if (!invoiceId && !orderId) {
       throw new Error('Missing invoiceId or orderId')
     }
+
 
     // We must use SERVICE ROLE KEY to bypass RLS when reading/updating sensitive records.
     const supabaseClient = createClient(
