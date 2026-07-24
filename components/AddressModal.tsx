@@ -20,7 +20,14 @@ interface AddressModalProps {
     currentSelection?: AddressSelection | null;
 }
 
-const DEFAULT_MAP_CENTER: Coordinates = { lat: 10.31253, lng: 123.895453 };
+const CEBU_CITY_CENTER: Coordinates = { lat: 10.3157, lng: 123.8854 };
+const CEBU_CITY_SEARCH_RADIUS_METERS = 15_000;
+const CEBU_CITY_SEARCH_BOUNDS = {
+    north: CEBU_CITY_CENTER.lat + (CEBU_CITY_SEARCH_RADIUS_METERS / 111_320),
+    south: CEBU_CITY_CENTER.lat - (CEBU_CITY_SEARCH_RADIUS_METERS / 111_320),
+    east: CEBU_CITY_CENTER.lng + (CEBU_CITY_SEARCH_RADIUS_METERS / (111_320 * Math.cos(CEBU_CITY_CENTER.lat * Math.PI / 180))),
+    west: CEBU_CITY_CENTER.lng - (CEBU_CITY_SEARCH_RADIUS_METERS / (111_320 * Math.cos(CEBU_CITY_CENTER.lat * Math.PI / 180))),
+};
 const MAP_READY_TIMEOUT_MS = 10_000;
 const isUsableCoordinates = (coordinates: Coordinates | null): coordinates is Coordinates => Boolean(
     coordinates &&
@@ -28,6 +35,18 @@ const isUsableCoordinates = (coordinates: Coordinates | null): coordinates is Co
     Number.isFinite(coordinates.lng) &&
     !(coordinates.lat === 0 && coordinates.lng === 0),
 );
+
+const distanceFromCebuCityMeters = ({ lat, lng }: Coordinates) => {
+    const toRadians = (degrees: number) => degrees * Math.PI / 180;
+    const latitudeDelta = toRadians(lat - CEBU_CITY_CENTER.lat);
+    const longitudeDelta = toRadians(lng - CEBU_CITY_CENTER.lng);
+    const originLatitude = toRadians(CEBU_CITY_CENTER.lat);
+    const destinationLatitude = toRadians(lat);
+    const a = Math.sin(latitudeDelta / 2) ** 2
+        + Math.cos(originLatitude) * Math.cos(destinationLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+
+    return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 const AddressModal: React.FC<AddressModalProps> = ({
     isOpen,
@@ -42,7 +61,6 @@ const AddressModal: React.FC<AddressModalProps> = ({
     const [mapStatus, setMapStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
     const [error, setError] = useState<string | null>(null);
     const [addressError, setAddressError] = useState<string | null>(null);
-    const [loadAttempt, setLoadAttempt] = useState(0);
     const [isAutocompleteAvailable, setIsAutocompleteAvailable] = useState(true);
 
     const mapRef = useRef<HTMLDivElement>(null);
@@ -138,7 +156,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
                 geocoder.current = new Geocoder();
                 const initialCoordinates = currentSelection?.coordinates ?? pinnedCoordinates;
                 mapInstance.current = new Map(mapRef.current, {
-                    center: initialCoordinates ?? DEFAULT_MAP_CENTER,
+                    center: initialCoordinates ?? CEBU_CITY_CENTER,
                     zoom: initialCoordinates ? 16 : 13,
                     disableDefaultUI: true,
                     gestureHandling: 'cooperative',
@@ -159,8 +177,10 @@ const AddressModal: React.FC<AddressModalProps> = ({
                 if (PlaceAutocompleteElement && autocompleteRef.current) {
                     setIsAutocompleteAvailable(true);
                     const autocomplete = new PlaceAutocompleteElement();
-                    autocomplete.setAttribute('aria-label', 'Find the area on the map (optional)');
+                    autocomplete.setAttribute('aria-label', 'Search within 15 km of Cebu City');
                     autocomplete.style.width = '100%';
+                    (autocomplete as any).includedRegionCodes = ['ph'];
+                    (autocomplete as any).locationRestriction = CEBU_CITY_SEARCH_BOUNDS;
 
                     const handlePlaceSelect = async (event: Event) => {
                         const requestId = ++placeRequestId.current;
@@ -180,6 +200,10 @@ const AddressModal: React.FC<AddressModalProps> = ({
                             ) return;
 
                             const coordinates = place.location.toJSON() as Coordinates;
+                            if (distanceFromCebuCityMeters(coordinates) > CEBU_CITY_SEARCH_RADIUS_METERS) {
+                                setError('Choose a location within 15 km of Cebu City.');
+                                return;
+                            }
                             mapInstance.current?.setCenter(coordinates);
                             mapInstance.current?.setZoom(16);
                             setPinnedCoordinates(coordinates);
@@ -228,7 +252,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
                 ) return;
 
                 setMapStatus('error');
-                setError('The map could not load. You can retry or continue with a complete address without a map pin.');
+                setError('The map could not load. Please close this window and try again later.');
             });
 
         return () => {
@@ -240,7 +264,6 @@ const AddressModal: React.FC<AddressModalProps> = ({
         clearMapResources,
         isManualMode,
         isOpen,
-        loadAttempt,
         reverseGeocode,
     ]);
 
@@ -268,7 +291,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
         const timeoutId = window.setTimeout(() => {
             pendingLocation.current = null;
             if (isOpenRef.current) {
-                setError('Your location was found, but the map did not become ready. Retry the map or enter the address manually.');
+                setError('Your location was found, but the map did not become ready. Please close this window and try again later.');
             }
         }, MAP_READY_TIMEOUT_MS);
         pendingLocation.current = { coordinates, timeoutId };
@@ -292,7 +315,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
             },
             () => {
                 if (isOpenRef.current) {
-                    setError('Unable to retrieve your location. Please enable location services or enter the address manually.');
+                    setError('Unable to retrieve your location. Please enable location services and try again.');
                 }
             },
             { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
@@ -314,24 +337,6 @@ const AddressModal: React.FC<AddressModalProps> = ({
                 : pinnedCoordinates,
             source: isManualMode || !isUsableCoordinates(pinnedCoordinates) ? 'manual' : 'map',
         });
-    };
-
-    const useManualAddress = () => {
-        if (pendingLocation.current) {
-            window.clearTimeout(pendingLocation.current.timeoutId);
-            pendingLocation.current = null;
-        }
-        setPinnedCoordinates(null);
-        setPinnedAddress('');
-        setError(null);
-        setIsManualMode(true);
-    };
-
-    const retryMap = () => {
-        setError(null);
-        setPinnedAddress('');
-        setIsManualMode(false);
-        setLoadAttempt((attempt) => attempt + 1);
     };
 
     if (!isOpen) return null;
@@ -360,15 +365,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
                                 )}
                                 {mapStatus === 'error' && (
                                     <div className="absolute inset-0 bg-red-50 flex flex-col items-center justify-center z-20 p-5 text-center">
-                                        <p className="text-sm text-red-700 mb-3">{error}</p>
-                                        <div className="flex flex-wrap justify-center gap-2">
-                                            <button type="button" onClick={retryMap} className="px-4 py-2 rounded-xl border border-primary text-primary font-medium">
-                                                Retry map
-                                            </button>
-                                            <button type="button" onClick={useManualAddress} className="px-4 py-2 rounded-xl bg-primary text-white font-medium">
-                                                Enter address manually
-                                            </button>
-                                        </div>
+                                        <p className="text-sm text-red-700">{error}</p>
                                     </div>
                                 )}
                                 <div ref={mapRef} className="w-full h-full" aria-label="Delivery area map" />
@@ -386,7 +383,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
 
                             <div className="p-4 bg-gray-50 border-t">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Find the area on the map (optional)
+                                    Search within 15 km of Cebu City
                                 </label>
                                 <div ref={autocompleteRef} className="min-h-[48px] mb-2" />
                                 {mapStatus === 'ready' && !isAutocompleteAvailable && (
@@ -400,9 +397,6 @@ const AddressModal: React.FC<AddressModalProps> = ({
                                 {error && mapStatus !== 'error' && (
                                     <p className="text-xs text-red-600 mt-2" role="status">{error}</p>
                                 )}
-                                <button type="button" onClick={useManualAddress} className="text-sm text-primary hover:underline font-medium mt-2">
-                                    Continue without a map pin
-                                </button>
                             </div>
                         </>
                     )}
@@ -413,11 +407,6 @@ const AddressModal: React.FC<AddressModalProps> = ({
                             <p className="text-xs text-gray-600 mt-1">
                                 The map is optional. Enter a complete delivery address below to continue.
                             </p>
-                            {googleMapsApiKey && (
-                                <button type="button" onClick={retryMap} className="text-sm text-primary hover:underline font-medium mt-2">
-                                    Try the map
-                                </button>
-                            )}
                         </div>
                     )}
 

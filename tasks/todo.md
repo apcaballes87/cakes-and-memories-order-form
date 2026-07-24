@@ -9,6 +9,7 @@
 - [x] Add deployment source/project guards and keep RLS/storage revocation gated until consumer verification.
 - [x] Add browser/app typechecks, unit tests, browser tests, and focused reliability scenarios.
 - [x] Run build, typecheck, tests, diff checks, browser verification, and live-state read-only checks.
+- [ ] Limit map autocomplete to a 15 km Cebu City service radius and remove manual-map escape buttons; verify production map search.
 - [ ] Enable the rotated Google Maps browser key in Vercel, then verify map pinning in production and begin the 48-hour Phase 1 observation.
 
 ## Review
