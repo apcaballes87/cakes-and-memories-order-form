@@ -9,7 +9,7 @@
 - [x] Add deployment source/project guards and keep RLS/storage revocation gated until consumer verification.
 - [x] Add browser/app typechecks, unit tests, browser tests, and focused reliability scenarios.
 - [x] Run build, typecheck, tests, diff checks, browser verification, and live-state read-only checks.
-- [ ] Deploy only the verified Phase 1 release; document the 48-hour observation and Phase 2 activation gates.
+- [ ] Enable the rotated Google Maps browser key in Vercel, then verify map pinning in production and begin the 48-hour Phase 1 observation.
 
 ## Review
 
@@ -17,7 +17,11 @@
   Playwright desktop/mobile validation, short viewport/manual-address recovery, and
   offline upload recovery. `scripts/deploy-order-form-functions.sh --check` confirmed
   the Cake App project and live v26/v24 source baseline.
-- Deferred intentionally: Maps key rotation/API enablement, Phase 1 deployment and
-  48-hour observation, Phase 2 migration/function deployment, client feature-flag
-  activation, and RLS/storage revocation. These require the prescribed production
-  rollout gate and must not be activated together.
+- The verified Phase 1 build is now live on Vercel. Its bundled client has no Google
+  Maps browser key, so it correctly enters manual-address fallback instead of showing
+  a broken map. Map pinning remains blocked until a newly rotated restricted key is
+  configured with billing and the required Google Maps APIs, followed by a rebuild.
+- Deferred intentionally: Maps key rotation/API enablement and its 48-hour observation,
+  Phase 2 migration/function deployment, client feature-flag activation, and RLS/storage
+  revocation. These require the prescribed production rollout gate and must not be
+  activated together.
