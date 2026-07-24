@@ -57,7 +57,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
     const [pinnedAddress, setPinnedAddress] = useState('');
     const [deliveryAddress, setDeliveryAddress] = useState('');
     const [pinnedCoordinates, setPinnedCoordinates] = useState<Coordinates | null>(null);
-    const [isManualMode, setIsManualMode] = useState(!googleMapsApiKey);
+    const isManualMode = !googleMapsApiKey;
     const [mapStatus, setMapStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
     const [error, setError] = useState<string | null>(null);
     const [addressError, setAddressError] = useState<string | null>(null);
@@ -93,9 +93,6 @@ const AddressModal: React.FC<AddressModalProps> = ({
         if (currentSelection) {
             setDeliveryAddress(currentSelection.address);
             setPinnedCoordinates(currentSelection.coordinates);
-            setIsManualMode(currentSelection.source === 'manual' || !googleMapsApiKey);
-        } else if (!googleMapsApiKey) {
-            setIsManualMode(true);
         }
     }, [currentSelection, isOpen]);
 
