@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "types": [
+      "node",
+      "vite/client"
+    ]
+  },
+  "include": [
+    "App.tsx",
+    "index.tsx",
+    "components/**/*.tsx",
+    "pages/**/*.tsx",
+    "services/**/*.ts",
+    "utils/**/*.ts",
+    "types.ts",
+    "src/vite-env.d.ts",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "scratch",
+    "supabase",
+    "tests"
+  ]
+}

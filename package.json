@@ -6,23 +6,36 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "npm run typecheck:app && npm run typecheck:functions",
+    "typecheck:app": "tsc --project tsconfig.app.json",
+    "typecheck:functions": "tsc --project tsconfig.functions.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:desktop": "playwright test --project=desktop"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.6",
-    "@supabase/supabase-js": "^2.75.1",
+    "@supabase/supabase-js": "^2.110.8",
     "dotenv": "^17.4.2",
     "lucide-react": "^0.546.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.65.0",
-    "react-router-dom": "^7.9.4"
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
+    "@vitejs/plugin-react": "^6.0.4",
+    "@vitest/coverage-v8": "^4.1.10",
+    "jsdom": "^29.1.1",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
   }
 }

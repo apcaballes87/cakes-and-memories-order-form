@@ -1,128 +1,179 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import {
+  ContractError,
+  createAdminClient,
+  errorResponse,
+  fetchXenditInvoiceById,
+  findPaymentForVerification,
+  isUuid,
+  jsonResponse,
+  newAttemptId,
+  normalizeError,
+  recordEvent,
+  validateRecordedInvoice,
+} from '../_shared/order-submission.ts'
 
-const XENDIT_SECRET_KEY = Deno.env.get('XENDIT_SECRET_KEY') ?? '';
-
-serve(async (req) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  }
-
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return jsonResponse(req, { ok: true })
   }
+
+  const attemptId = newAttemptId()
+  let submissionId: string | undefined
+  let admin: ReturnType<typeof createAdminClient> | undefined
 
   try {
-    const body = await req.json()
+    if (req.method !== 'POST') {
+      throw new ContractError(
+        'METHOD_NOT_ALLOWED',
+        'This payment request is not supported.',
+        405,
+        false,
+      )
+    }
 
-    // Support both client-side parameters (invoiceId, orderId)
-    // and Xendit webhook callback payload (id, external_id)
-    const invoiceId = body.invoiceId || body.id
-    let orderId = body.orderId
+    const raw = await req.json()
+    const lookup =
+      typeof raw === 'object' && raw !== null
+        ? {
+            submissionId:
+              'submissionId' in raw && typeof raw.submissionId === 'string'
+                ? raw.submissionId
+                : undefined,
+            invoiceId:
+              'invoiceId' in raw && typeof raw.invoiceId === 'string'
+                ? raw.invoiceId
+                : undefined,
+            orderId:
+              'orderId' in raw && typeof raw.orderId === 'string'
+                ? raw.orderId
+                : undefined,
+          }
+        : {}
 
-    if (!orderId && body.external_id) {
-      // Strip "order_" prefix if present (external_id is typically "order_123")
-      if (body.external_id.startsWith('order_')) {
-        orderId = body.external_id.replace('order_', '')
-      } else {
-        orderId = body.external_id
+    if (lookup.submissionId && !isUuid(lookup.submissionId)) {
+      throw new ContractError(
+        'SUBMISSION_ID_INVALID',
+        'The payment reference is invalid.',
+        400,
+        false,
+      )
+    }
+
+    admin = createAdminClient()
+    const payment = await findPaymentForVerification(admin, lookup)
+    if (!payment) {
+      throw new ContractError(
+        'PAYMENT_NOT_FOUND',
+        'We could not find this payment.',
+        404,
+        false,
+      )
+    }
+
+    if (!isUuid(payment.submission_id)) {
+      // Existing v26/v24 payments have no submission ID and may already have
+      // been copied into the final table. Refuse to guess and duplicate them.
+      throw new ContractError(
+        'LEGACY_PAYMENT_REQUIRES_REVIEW',
+        'This earlier payment needs manual verification. Please contact support with the attempt ID.',
+        409,
+        false,
+      )
+    }
+    submissionId = payment.submission_id
+
+    const invoice = await fetchXenditInvoiceById(
+      payment.xendit_invoice_id,
+    )
+    validateRecordedInvoice(invoice, payment)
+
+    if (invoice.status === 'PAID' || invoice.status === 'SETTLED') {
+      const { data, error } = await admin.rpc('finalize_xendit_order', {
+        p_submission_id: submissionId,
+        p_invoice_id: invoice.id,
+        p_external_id: invoice.external_id,
+        p_paid_amount: invoice.amount,
+        p_paid_at: invoice.paid_at ?? null,
+        p_payment_method:
+          invoice.payment_method ?? invoice.payment_channel ?? null,
+      })
+
+      if (error) {
+        throw new ContractError(
+          'PAYMENT_FINALIZATION_FAILED',
+          'Your payment is confirmed, but the order is still finalizing. Please retry shortly.',
+          503,
+          true,
+        )
       }
+
+      const finalized = Array.isArray(data) ? data[0] : data
+      await recordEvent(admin, {
+        submissionId,
+        attemptId,
+        stage: 'completion',
+        eventName: 'paid_order_finalized',
+      })
+
+      return jsonResponse(req, {
+        kind: 'payment_status',
+        submissionId,
+        attemptId,
+        status: 'PAID',
+        orderId: finalized?.order_id ?? payment.final_order_id,
+        orderNumber: finalized?.order_number ?? null,
+      })
     }
 
-    if (!invoiceId && !orderId) {
-      throw new Error('Missing invoiceId or orderId')
-    }
-
-
-    // We must use SERVICE ROLE KEY to bypass RLS when reading/updating sensitive records.
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const { error: statusError } = await admin.rpc(
+      'record_xendit_payment_status',
+      {
+        p_submission_id: submissionId,
+        p_invoice_id: invoice.id,
+        p_status: invoice.status,
+        p_payment_method:
+          invoice.payment_method ?? invoice.payment_channel ?? null,
+        p_paid_amount: invoice.paid_amount ?? null,
+        p_paid_at: invoice.paid_at ?? null,
+      },
     )
 
-    // 1. Fetch from xendit_payments
-    let query = supabaseClient.from('xendit_payments').select('*');
-    if (invoiceId) {
-      query = query.eq('xendit_invoice_id', invoiceId);
-    } else {
-      query = query.eq('order_id', orderId);
+    if (statusError) {
+      throw new ContractError(
+        'PAYMENT_STATUS_SAVE_FAILED',
+        'We found the payment, but its status is still syncing. Please retry.',
+        503,
+        true,
+      )
     }
 
-    const { data: paymentRecord, error: fetchError } = await query.single();
+    await recordEvent(admin, {
+      submissionId,
+      attemptId,
+      stage: 'payment',
+      eventName: 'payment_status_checked',
+    })
 
-    if (fetchError || !paymentRecord) {
-      throw new Error('Payment record not found');
-    }
-
-    const currentInvoiceId = paymentRecord.xendit_invoice_id;
-
-    // 2. Fetch the latest status from Xendit
-    const xenditAuth = btoa(`${XENDIT_SECRET_KEY}:`);
-    const xenditResponse = await fetch(`https://api.xendit.co/v2/invoices/${currentInvoiceId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${xenditAuth}`
-      }
-    });
-
-    if (!xenditResponse.ok) {
-      throw new Error('Failed to fetch invoice from Xendit');
-    }
-
-    const invoice = await xenditResponse.json();
-
-    // 3. Update xendit_payments status
-    if (invoice.status !== paymentRecord.status) {
-      await supabaseClient
-        .from('xendit_payments')
-        .update({ status: invoice.status })
-        .eq('xendit_invoice_id', currentInvoiceId);
-    }
-
-    // 4. If PAID, transfer order to New Facebook Orders
-    if (invoice.status === 'PAID' && paymentRecord.status !== 'PAID') {
-      // Get the pending order data
-      const { data: pendingOrder, error: pendingError } = await supabaseClient
-        .from('pending_facebook_orders')
-        .select('order_data')
-        .eq('id', paymentRecord.order_id)
-        .single();
-
-      if (pendingError || !pendingOrder) {
-        throw new Error('Pending order not found for transfer');
-      }
-
-      const orderData = pendingOrder.order_data;
-      
-      // Override price status if needed (since it is paid now)
-      orderData.paymentOption = 'XENDIT';
-      // Append some metadata regarding payment
-      orderData.facebookname = orderData.facebookname ? `${orderData.facebookname} [PAID VIA XENDIT]` : '[PAID VIA XENDIT]';
-
-      // Insert into New Facebook Orders
-      const { error: insertError } = await supabaseClient
-        .from('New Facebook Orders')
-        .insert(orderData);
-
-      if (insertError) {
-        console.error('Failed to insert into New Facebook Orders:', insertError);
-        throw new Error('Failed to complete order transfer');
-      }
-      
-      // Optionally delete or mark pending order as completed
-      // await supabaseClient.from('pending_facebook_orders').delete().eq('id', paymentRecord.order_id);
-    }
-
-    return new Response(
-      JSON.stringify({ status: invoice.status, invoiceId: currentInvoiceId }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    )
-
+    return jsonResponse(req, {
+      kind: 'payment_status',
+      submissionId,
+      attemptId,
+      status: invoice.status,
+      invoiceId: invoice.id,
+    })
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-    )
+    const normalized = normalizeError(error)
+
+    if (admin) {
+      await recordEvent(admin, {
+        submissionId,
+        attemptId,
+        stage: 'payment',
+        eventName: 'payment_verification_failed',
+        errorCode: normalized.code,
+      })
+    }
+
+    return errorResponse(req, error, attemptId, submissionId)
   }
 })

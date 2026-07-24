@@ -11,9 +11,6 @@ import {
   recordEvent,
 } from '../_shared/order-submission.ts'
 
-// Compatibility entrypoint for the old function slug. Phase 2 callers must
-// provide submissionId; retries without a retained idempotency key are rejected
-// instead of risking a duplicate invoice.
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return jsonResponse(req, { ok: true })
@@ -27,7 +24,7 @@ Deno.serve(async (req: Request) => {
     if (req.method !== 'POST') {
       throw new ContractError(
         'METHOD_NOT_ALLOWED',
-        'This payment request is not supported.',
+        'This order request is not supported.',
         405,
         false,
       )
@@ -43,22 +40,8 @@ Deno.serve(async (req: Request) => {
       submissionId = raw.submissionId
     }
 
-    const adapted =
-      typeof raw === 'object' && raw !== null
-        ? {
-            ...raw,
-            payment:
-              'payment' in raw && typeof raw.payment === 'object'
-                ? raw.payment
-                : {
-                    mode: 'xendit',
-                    amount: 'amount' in raw ? raw.amount : undefined,
-                  },
-          }
-        : raw
-
     admin = createAdminClient()
-    const submission = await parseSubmissionRequest(adapted, 'xendit')
+    const submission = await parseSubmissionRequest(raw)
     submissionId = submission.submissionId
 
     const response = await executeSubmission(
@@ -75,8 +58,8 @@ Deno.serve(async (req: Request) => {
       await recordEvent(admin, {
         submissionId,
         attemptId,
-        stage: 'payment',
-        eventName: 'payment_creation_failed',
+        stage: 'validation',
+        eventName: 'submission_failed',
         errorCode: normalized.code,
       })
     }

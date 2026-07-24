@@ -10,22 +10,26 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
  * Uploads a file to Supabase Storage.
  * Note: You must create a public bucket named 'cakepics' in your Supabase project.
  * @param file The file to upload.
- * @returns The public URL of the uploaded file, or null on error.
+ * @param storagePath Optional deterministic object path.
+ * @returns The public URL of the uploaded file.
  */
-export const uploadFile = async (file: File): Promise<string | null> => {
-  if (!file) return null;
+export const uploadFile = async (file: File, storagePath?: string): Promise<string> => {
+  if (!file) throw new Error('No file was selected for upload.');
 
   const fileExt = file.name.split('.').pop();
-  const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
-  const bucketName = 'files'; // FIX: Use the standard 'files' bucket
+  const fileName = storagePath || `${Date.now()}-${crypto.randomUUID()}.${fileExt}`;
+  const bucketName = 'files';
   
   const { error: uploadError } = await supabase.storage
     .from(bucketName)
-    .upload(fileName, file);
+    .upload(fileName, file, {
+      cacheControl: '3600',
+      contentType: file.type || undefined,
+      upsert: Boolean(storagePath),
+    });
 
   if (uploadError) {
-    console.error('Error uploading file:', uploadError.message);
-    return null;
+    throw new Error(uploadError.message);
   }
 
   const { data } = supabase.storage
