@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import OrderForm, { isUuid } from '../pages/OrderForm';
+import OrderForm, { formatProductDescription, isUuid } from '../pages/OrderForm';
 
 const fromMock = vi.hoisted(() => vi.fn());
 
@@ -93,6 +93,59 @@ describe('OrderForm validation and dependency behavior', () => {
     await user.click(screen.getByRole('button', { name: '1 Tier' }));
     expect(screen.queryByLabelText('Please specify')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Others' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows the appropriate required flavor fields for each cake tier count', async () => {
+    renderDefaultForm();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: '1 Tier' }));
+    expect(screen.getByText('Cake Flavor')).toBeInTheDocument();
+    expect(screen.queryByText('Top Tier Flavor')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '2 Tier' }));
+    expect(screen.getByText('Top Tier Flavor')).toBeInTheDocument();
+    expect(screen.getByText('Bottom Tier Flavor')).toBeInTheDocument();
+    expect(screen.queryByText('Middle Tier Flavor')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '3 Tier' }));
+    expect(screen.getByText('Top Tier Flavor')).toBeInTheDocument();
+    expect(screen.getByText('Middle Tier Flavor')).toBeInTheDocument();
+    expect(screen.getByText('Bottom Tier Flavor')).toBeInTheDocument();
+  });
+
+  it('limits Bento Cake to Chocolate and selects it automatically', async () => {
+    renderDefaultForm();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: '1 Tier' }));
+    await user.click(screen.getByRole('button', { name: 'Bento Cake (4")' }));
+
+    expect(screen.getByRole('button', { name: 'Chocolate' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'Vanilla' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ube' })).not.toBeInTheDocument();
+  });
+
+  it('includes each selected flavor in the saved product description', () => {
+    expect(formatProductDescription({
+      productType: '1 Tier',
+      productSubType: '6\" Round (4\" Thickness)',
+      otherProduct: '',
+      cakeFlavor: 'Vanilla',
+      topTierFlavor: '',
+      middleTierFlavor: '',
+      bottomTierFlavor: '',
+    })).toBe('6\" Round (4\" Thickness) Vanilla');
+
+    expect(formatProductDescription({
+      productType: '3 Tier',
+      productSubType: '6\"x9\"x12\"',
+      otherProduct: '',
+      cakeFlavor: '',
+      topTierFlavor: 'Chocolate',
+      middleTierFlavor: 'Ube',
+      bottomTierFlavor: 'Vanilla',
+    })).toBe('6\"x9\"x12\" Top Tier: Chocolate, Middle Tier: Ube, Bottom Tier: Vanilla');
   });
 });
 

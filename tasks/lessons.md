@@ -8,3 +8,6 @@
 - Do not report a map feature as working from a successful code deployment alone.
   Confirm the production bundle contains a configured browser key and exercise the
   delivery-location modal before claiming the customer path is restored.
+
+- When a product subtype has a fixed business option, constrain the visible choices
+  and set the only valid value automatically so the saved order cannot omit it.

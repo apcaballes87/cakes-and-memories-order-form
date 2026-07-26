@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
 import { sendMessengerConfirmation } from '../services/messengerService';
-import type { OrderFormData } from '../types';
+import type { OrderFormData, Product } from '../types';
 import Header from '../components/Header';
 import FormSection from '../components/FormSection';
 import { Input, Textarea, Checkbox, ChoiceChipGroup } from '../components/FormElements';
@@ -31,6 +31,33 @@ const productOptions: { types: string[]; subTypes: Record<string, string[]> } = 
     "Square or Rectangular": ["8x12 Rectangular Cake", "10x14 Rectangular Cake", "12x16 Rectangular Cake", "8x8 Square Cake", "9x9 Square Cake", "10x10 Square Cake"],
     "Cupcakes & Pastries": ["Chocolate Cupcakes", "Vanilla Cupcakes", "Cakepops", "Brownies", "Custom Sugar Cookies", "Crinkles", "Macaroons"],
   }
+};
+
+const CAKE_FLAVORS = ['Chocolate', 'Vanilla', 'Ube'];
+const BENTO_CAKE_SUBTYPE = 'Bento Cake (4")';
+
+const flavorOptionsFor = (productSubType: string): string[] =>
+  productSubType === BENTO_CAKE_SUBTYPE ? ['Chocolate'] : CAKE_FLAVORS;
+
+export const formatProductDescription = (product: Pick<Product, 'productType' | 'productSubType' | 'otherProduct' | 'cakeFlavor' | 'topTierFlavor' | 'middleTierFlavor' | 'bottomTierFlavor'>): string => {
+  let productDescription = product.productType;
+  if (product.productType === 'Other') {
+    productDescription = product.otherProduct;
+  } else if (product.productSubType) {
+    productDescription = product.productSubType === 'Others'
+      ? product.otherProduct || product.productType
+      : product.productSubType;
+  }
+
+  const flavorDescription = product.productType === '1 Tier'
+    ? product.cakeFlavor
+    : product.productType === '2 Tier'
+      ? `Top Tier: ${product.topTierFlavor}, Bottom Tier: ${product.bottomTierFlavor}`
+      : product.productType === '3 Tier'
+        ? `Top Tier: ${product.topTierFlavor}, Middle Tier: ${product.middleTierFlavor}, Bottom Tier: ${product.bottomTierFlavor}`
+        : '';
+
+  return [productDescription, flavorDescription].filter(Boolean).join(' ');
 };
 
 const mapProductSize = (sizeStr: string) => {
@@ -167,7 +194,7 @@ const collectErrorEntries = (
 const fieldAnchorId = (path: string): string => {
   if (path === 'address') return 'address-display';
   if (path === 'deliveryMethod' || path === 'paymentOption') return path;
-  const match = path.match(/^products\.(\d+)\.(productType|productSubType)$/);
+  const match = path.match(/^products\.(\d+)\.(productType|productSubType|cakeFlavor|topTierFlavor|middleTierFlavor|bottomTierFlavor)$/);
   if (match) return `products-${match[1]}-${match[2]}`;
   return path;
 };
@@ -283,6 +310,10 @@ const OrderForm = (): React.JSX.Element => {
           productType: '',
           productSubType: '',
           otherProduct: '',
+          cakeFlavor: '',
+          topTierFlavor: '',
+          middleTierFlavor: '',
+          bottomTierFlavor: '',
           message: '',
           details: '',
           quantity: 1,
@@ -367,6 +398,10 @@ const OrderForm = (): React.JSX.Element => {
                 productType: type,
                 productSubType: subType,
                 otherProduct: other,
+                cakeFlavor: '',
+                topTierFlavor: '',
+                middleTierFlavor: '',
+                bottomTierFlavor: '',
                 message: data[`Message${i}`] || data[`message${i}`] || '',
                 details: data[`details${i}`] || '',
                 quantity: data[`quantity${i}`] || data[`qty${i}`] || 1,
@@ -383,6 +418,10 @@ const OrderForm = (): React.JSX.Element => {
               productType: '',
               productSubType: '',
               otherProduct: '',
+              cakeFlavor: '',
+              topTierFlavor: '',
+              middleTierFlavor: '',
+              bottomTierFlavor: '',
               message: '',
               details: '',
               quantity: 1,
@@ -757,16 +796,7 @@ const OrderForm = (): React.JSX.Element => {
       data.products.forEach((product, index) => {
         if (index > 2) return;
 
-        let productDescription = product.productType;
-        if (product.productType === 'Other') {
-          productDescription = product.otherProduct;
-        } else if (product.productSubType) {
-          if (product.productSubType === 'Others') {
-            productDescription += ` - ${product.otherProduct || ''}`;
-          } else {
-            productDescription += ` - ${product.productSubType}`;
-          }
-        }
+        const productDescription = formatProductDescription(product);
 
         // Get image URLs for this product - store as JSON array for multiple images
         const imageUrls = productImageUrls[index] || [];
@@ -1189,10 +1219,18 @@ const OrderForm = (): React.JSX.Element => {
                           onChange(nextValue);
                           setValue(`products.${index}.productSubType`, '');
                           setValue(`products.${index}.otherProduct`, '');
+                          setValue(`products.${index}.cakeFlavor`, '');
+                          setValue(`products.${index}.topTierFlavor`, '');
+                          setValue(`products.${index}.middleTierFlavor`, '');
+                          setValue(`products.${index}.bottomTierFlavor`, '');
                           clearErrors([
                             `products.${index}.productType`,
                             `products.${index}.productSubType`,
                             `products.${index}.otherProduct`,
+                            `products.${index}.cakeFlavor`,
+                            `products.${index}.topTierFlavor`,
+                            `products.${index}.middleTierFlavor`,
+                            `products.${index}.bottomTierFlavor`,
                           ]);
                         }}
                         error={error?.message}
@@ -1200,6 +1238,75 @@ const OrderForm = (): React.JSX.Element => {
                       />
                     )}
                   />
+
+                  {watchedProducts[index]?.productType === '1 Tier' && (
+                    <Controller
+                      control={control}
+                      name={`products.${index}.cakeFlavor`}
+                      rules={{ required: 'Please select a cake flavor' }}
+                      render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                        <ChoiceChipGroup
+                          id={`products-${index}-cakeFlavor`}
+                          label="Cake Flavor"
+                          options={flavorOptionsFor(watchedProducts[index]?.productSubType || '')}
+                          value={value}
+                          onChange={onChange}
+                          error={error?.message}
+                          inputRef={ref}
+                        />
+                      )}
+                    />
+                  )}
+
+                  {watchedProducts[index]?.productType === '2 Tier' && (
+                    <>
+                      <Controller
+                        control={control}
+                        name={`products.${index}.topTierFlavor`}
+                        rules={{ required: 'Please select the top tier flavor' }}
+                        render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                          <ChoiceChipGroup id={`products-${index}-topTierFlavor`} label="Top Tier Flavor" options={CAKE_FLAVORS} value={value} onChange={onChange} error={error?.message} inputRef={ref} />
+                        )}
+                      />
+                      <Controller
+                        control={control}
+                        name={`products.${index}.bottomTierFlavor`}
+                        rules={{ required: 'Please select the bottom tier flavor' }}
+                        render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                          <ChoiceChipGroup id={`products-${index}-bottomTierFlavor`} label="Bottom Tier Flavor" options={CAKE_FLAVORS} value={value} onChange={onChange} error={error?.message} inputRef={ref} />
+                        )}
+                      />
+                    </>
+                  )}
+
+                  {watchedProducts[index]?.productType === '3 Tier' && (
+                    <>
+                      <Controller
+                        control={control}
+                        name={`products.${index}.topTierFlavor`}
+                        rules={{ required: 'Please select the top tier flavor' }}
+                        render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                          <ChoiceChipGroup id={`products-${index}-topTierFlavor`} label="Top Tier Flavor" options={CAKE_FLAVORS} value={value} onChange={onChange} error={error?.message} inputRef={ref} />
+                        )}
+                      />
+                      <Controller
+                        control={control}
+                        name={`products.${index}.middleTierFlavor`}
+                        rules={{ required: 'Please select the middle tier flavor' }}
+                        render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                          <ChoiceChipGroup id={`products-${index}-middleTierFlavor`} label="Middle Tier Flavor" options={CAKE_FLAVORS} value={value} onChange={onChange} error={error?.message} inputRef={ref} />
+                        )}
+                      />
+                      <Controller
+                        control={control}
+                        name={`products.${index}.bottomTierFlavor`}
+                        rules={{ required: 'Please select the bottom tier flavor' }}
+                        render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                          <ChoiceChipGroup id={`products-${index}-bottomTierFlavor`} label="Bottom Tier Flavor" options={CAKE_FLAVORS} value={value} onChange={onChange} error={error?.message} inputRef={ref} />
+                        )}
+                      />
+                    </>
+                  )}
 
                   {watchedProducts[index]?.productType && productOptions.subTypes[watchedProducts[index].productType] && (
                     <Controller
@@ -1214,6 +1321,11 @@ const OrderForm = (): React.JSX.Element => {
                           value={value}
                           onChange={(nextValue) => {
                             onChange(nextValue);
+                            setValue(
+                              `products.${index}.cakeFlavor`,
+                              nextValue === BENTO_CAKE_SUBTYPE ? 'Chocolate' : '',
+                            );
+                            clearErrors(`products.${index}.cakeFlavor`);
                             if (nextValue !== 'Others') {
                               setValue(`products.${index}.otherProduct`, '');
                               clearErrors(`products.${index}.otherProduct`);
@@ -1384,7 +1496,7 @@ const OrderForm = (): React.JSX.Element => {
             {fields.length < 3 && (
               <button
                 type="button"
-                onClick={() => append({ productType: '', productSubType: '', otherProduct: '', message: '', details: '', quantity: 1, candle: '', images: [] })}
+                onClick={() => append({ productType: '', productSubType: '', otherProduct: '', cakeFlavor: '', topTierFlavor: '', middleTierFlavor: '', bottomTierFlavor: '', message: '', details: '', quantity: 1, candle: '', images: [] })}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primaryLight text-primary rounded-2xl hover:bg-pink-50 transition-colors"
               >
                 <Plus size={18} /> Add Another Product

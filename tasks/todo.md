@@ -1,5 +1,20 @@
 # Order Form Reliability and Maps Recovery
 
+## Cake flavor by tier
+
+- [x] Trace product selection, validation, and submitted product-description mapping.
+- [x] Add tier-aware required flavor choices below Product Type.
+- [x] Save selected flavors with each product description and add focused coverage.
+- [x] Run typecheck, targeted tests, full tests, production build, and browser verification.
+- [x] Restrict Bento Cake flavor to Chocolate and select it automatically.
+
+## Cake flavor review
+
+- One-tier products save as `<size> <flavor>` (for example, `6\" Round (4\" Thickness) Vanilla`).
+- Two- and three-tier products preserve each tier explicitly in the saved product description.
+- Verified with app/function typechecks, 14 Vitest tests, a production build, and the live Vite form at `/order/default-user/1`.
+- Bento Cake now shows only Chocolate, already selected, while other one-tier cakes retain Chocolate, Vanilla, and Ube.
+
 - [x] Verify current Supabase guidance, live schemas, deployed function sources, and rollout guards.
 - [x] Implement unified form validation, visible invalid-submit handling, and conditional-field cleanup.
 - [x] Add bounded image processing/uploads, submission stages, retryable errors, and attempt IDs.

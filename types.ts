@@ -2,6 +2,10 @@ export interface Product {
   productType: string;
   productSubType: string;
   otherProduct: string;
+  cakeFlavor: string;
+  topTierFlavor: string;
+  middleTierFlavor: string;
+  bottomTierFlavor: string;
   message: string;
   details: string;
   quantity: number;
