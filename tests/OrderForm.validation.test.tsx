@@ -126,6 +126,27 @@ describe('OrderForm validation and dependency behavior', () => {
     expect(screen.queryByRole('button', { name: 'Ube' })).not.toBeInTheDocument();
   });
 
+  it('requires a flavor for Square or Rectangular cakes and saves it with the product', async () => {
+    renderDefaultForm();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Square or Rectangular' }));
+    expect(screen.getByText('Cake Flavor')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chocolate' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vanilla' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ube' })).toBeInTheDocument();
+
+    expect(formatProductDescription({
+      productType: 'Square or Rectangular',
+      productSubType: '8x12 Rectangular Cake',
+      otherProduct: '',
+      cakeFlavor: 'Ube',
+      topTierFlavor: '',
+      middleTierFlavor: '',
+      bottomTierFlavor: '',
+    })).toBe('8x12 Rectangular Cake Ube');
+  });
+
   it('includes each selected flavor in the saved product description', () => {
     expect(formatProductDescription({
       productType: '1 Tier',

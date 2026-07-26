@@ -36,6 +36,9 @@ const productOptions: { types: string[]; subTypes: Record<string, string[]> } = 
 const CAKE_FLAVORS = ['Chocolate', 'Vanilla', 'Ube'];
 const BENTO_CAKE_SUBTYPE = 'Bento Cake (4")';
 
+const supportsSingleCakeFlavor = (productType: string): boolean =>
+  productType === '1 Tier' || productType === 'Square or Rectangular';
+
 const flavorOptionsFor = (productSubType: string): string[] =>
   productSubType === BENTO_CAKE_SUBTYPE ? ['Chocolate'] : CAKE_FLAVORS;
 
@@ -49,7 +52,7 @@ export const formatProductDescription = (product: Pick<Product, 'productType' | 
       : product.productSubType;
   }
 
-  const flavorDescription = product.productType === '1 Tier'
+  const flavorDescription = supportsSingleCakeFlavor(product.productType)
     ? product.cakeFlavor
     : product.productType === '2 Tier'
       ? `Top Tier: ${product.topTierFlavor}, Bottom Tier: ${product.bottomTierFlavor}`
@@ -1239,7 +1242,7 @@ const OrderForm = (): React.JSX.Element => {
                     )}
                   />
 
-                  {watchedProducts[index]?.productType === '1 Tier' && (
+                  {supportsSingleCakeFlavor(watchedProducts[index]?.productType || '') && (
                     <Controller
                       control={control}
                       name={`products.${index}.cakeFlavor`}

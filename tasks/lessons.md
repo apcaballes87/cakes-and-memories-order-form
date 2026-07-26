@@ -11,3 +11,6 @@
 
 - When a product subtype has a fixed business option, constrain the visible choices
   and set the only valid value automatically so the saved order cannot omit it.
+
+- When adding a shared product option, check every requested product type in both
+  the form visibility rule and the submitted product-description formatter.

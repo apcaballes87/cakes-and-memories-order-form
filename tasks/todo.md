@@ -7,6 +7,7 @@
 - [x] Save selected flavors with each product description and add focused coverage.
 - [x] Run typecheck, targeted tests, full tests, production build, and browser verification.
 - [x] Restrict Bento Cake flavor to Chocolate and select it automatically.
+- [x] Add a required Chocolate, Vanilla, or Ube flavor selector for Square or Rectangular cakes.
 
 ## Cake flavor review
 
@@ -14,6 +15,7 @@
 - Two- and three-tier products preserve each tier explicitly in the saved product description.
 - Verified with app/function typechecks, 14 Vitest tests, a production build, and the live Vite form at `/order/default-user/1`.
 - Bento Cake now shows only Chocolate, already selected, while other one-tier cakes retain Chocolate, Vanilla, and Ube.
+- Square or Rectangular cakes use the same required flavor selector and save as `<size> <flavor>`.
 
 - [x] Verify current Supabase guidance, live schemas, deployed function sources, and rollout guards.
 - [x] Implement unified form validation, visible invalid-submit handling, and conditional-field cleanup.
