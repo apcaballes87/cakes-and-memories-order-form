@@ -380,7 +380,6 @@ async function normalizeSubmission(
   delete fingerprintOrderData.DateOrdered
 
   const fingerprintInput = {
-    submissionId,
     routeKind: routeIdentity.kind,
     orderData: fingerprintOrderData,
     assets,
@@ -416,6 +415,7 @@ export async function executeSubmission(
   attemptId: string,
   admin: AdminClient,
 ): Promise<Record<string, unknown>> {
+  await authorizeSubmission(admin, submission)
   await recordEvent(admin, {
     submissionId: submission.submissionId,
     attemptId,
@@ -550,6 +550,12 @@ export async function createOrReuseXenditPayment(
   let recoveredExistingInvoice = Boolean(invoice)
 
   if (!invoice) {
+    const { data: claimed, error: claimError } = await admin.rpc('claim_order_invoice_creation', {
+      p_submission_id: submission.submissionId,
+    })
+    if (claimError) throw rpcContractError(claimError)
+    if (!claimed) throw new ContractError('PAYMENT_RECOVERY_PENDING',
+      'Payment creation is being reconciled. Please retry shortly or contact staff.', 503, true)
     try {
       invoice = await createXenditInvoice(
         req,
@@ -562,6 +568,8 @@ export async function createOrReuseXenditPayment(
       // reconcile by the deterministic external ID before returning an error.
       invoice = await findXenditInvoiceByExternalId(externalId)
       if (!invoice) {
+        await admin.from('order_submission_claims').update({ provider_state: 'uncertain' })
+          .eq('submission_id', submission.submissionId)
         throw error
       }
       recoveredExistingInvoice = true
@@ -595,6 +603,8 @@ export async function createOrReuseXenditPayment(
     )
   }
 
+  await admin.from('order_submission_claims').update({ provider_state: 'recorded' })
+    .eq('submission_id', submission.submissionId)
   const payment = firstRow<RecordedPayment>(paymentData)
   const paymentUrl = payment?.payment_link_url ?? invoice.invoice_url
   if (!paymentUrl) {
@@ -967,8 +977,8 @@ function normalizeOrderData(
     ['Name', 'Customer name'],
     ['contact', 'Contact number'],
     ['Addres', 'Delivery or pickup address'],
-    ['DateEvent', 'Event date'],
-    ['TimeEvent', 'Event time'],
+    ['DateEvent', 'Delivery/pickup date'],
+    ['TimeEvent', 'Delivery/pickup time'],
     ['Product1', 'First product'],
     ['paymentOption', 'Payment option'],
   ]
@@ -993,7 +1003,7 @@ function normalizeOrderData(
   ) {
     throw new ContractError(
       'EVENT_DATE_INVALID',
-      'Please choose a valid event date.',
+      'Please choose a valid delivery/pickup date.',
       400,
       false,
     )
@@ -1005,7 +1015,7 @@ function normalizeOrderData(
   ) {
     throw new ContractError(
       'EVENT_TIME_INVALID',
-      'Please choose a valid event time.',
+      'Please choose a valid delivery/pickup time.',
       400,
       false,
     )
@@ -1412,6 +1422,8 @@ async function xenditFetch(
 function rpcContractError(error: { message?: string; code?: string }): ContractError {
   const message = error.message ?? ''
 
+  if (message.includes('order_payment_in_progress')) return new ContractError('ORDER_PAYMENT_IN_PROGRESS', 'Resume the existing card payment before changing this order.', 409, false)
+  if (message.includes('order_capability_not_found')) return new ContractError('ORDER_CAPABILITY_NOT_FOUND', 'This order link is unavailable.', 404, false)
   if (message.includes('submission_payload_conflict')) {
     return new ContractError(
       'SUBMISSION_PAYLOAD_CONFLICT',
@@ -1489,4 +1501,44 @@ function getProductCount(orderData: Record<string, unknown>): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export async function authorizeSubmission(admin: AdminClient, submission: NormalizedSubmission): Promise<void> {
+  if (submission.preorderFacebookU) {
+    const { data: draft, error } = await admin.from('New PRE Facebook Orders').select('*')
+      .eq('facebookU', submission.preorderFacebookU).maybeSingle()
+    if (error || !draft) throw new ContractError('ORDER_CAPABILITY_NOT_FOUND', 'This order link is unavailable. Ask staff for a new link.', 404, false)
+    submission.orderData.subscriberid = draft.subscriberid ?? null
+    submission.orderData.branch = draft.branch || 'Cebu'
+    if (submission.payment.mode === 'xendit') {
+      const amount = Number(draft.totalorderprice)
+      if (!Number.isFinite(amount) || amount <= 0) throw new ContractError('PAYMENT_AMOUNT_UNCONFIRMED', 'Staff must confirm the price before card payment.', 409, false)
+      submission.payment.amount = amount
+    }
+  } else if (submission.payment.mode === 'xendit') {
+    throw new ContractError('PAYMENT_CAPABILITY_REQUIRED', 'Use a staff-issued order link for card payment.', 409, false)
+  }
+  if (!submission.preorderFacebookU) submission.orderData.subscriberid = null
+  for (const [product, quantity] of [['Product1', 'quantity1'], ['Product2', 'quantity2'], ['product3', 'qty3']]) {
+    if (!submission.orderData[product]) continue
+    const number = Number(submission.orderData[quantity])
+    if (!Number.isInteger(number) || number < 1) throw new ContractError('ORDER_QUANTITY_REQUIRED',
+      'Enter a whole-number quantity of at least 1 for every product.', 400, false)
+  }
+  // Customer content can never set operational or payment state.
+  for (const field of ['payment', 'hold', 'copiedToList', 'orderNumber']) delete submission.orderData[field]
+  const fingerprintData = { ...submission.orderData }
+  delete fingerprintData.DateOrdered
+  submission.requestFingerprint = await sha256Hex(canonicalStringify({
+    routeKind: submission.routeIdentity.kind, orderData: fingerprintData,
+    payment: submission.payment,
+  }))
+  const { data, error } = await admin.rpc('claim_order_submission', {
+    p_capability: submission.preorderFacebookU || submission.submissionId,
+    p_submission_id: submission.submissionId, p_mode: submission.payment.mode,
+    p_fingerprint: submission.requestFingerprint,
+  })
+  if (error) throw rpcContractError(error)
+  if (!isUuid(data)) throw new ContractError('ORDER_CLAIM_FAILED', 'We could not prepare your order.', 503, true)
+  submission.submissionId = data
 }

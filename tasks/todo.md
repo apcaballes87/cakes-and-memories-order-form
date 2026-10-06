@@ -1,5 +1,18 @@
 # Order Form Reliability and Maps Recovery
 
+## Messenger customer boundary — 7 October 2026
+
+- [x] Preserve lowercase secondary candles and unknown Messenger quantities.
+- [x] Implement capability status, per-order canonical direct/card intents and invoice reconciliation.
+- [x] Preserve legacy paid-invoice finalization and use consistent session-first lock ordering.
+- [x] Replace arbitrary browser confirmations with gated server-owned Zernio queue source.
+- [x] Prepare scoped Messenger final-row access protection and separate coordinated legacy cutoff.
+- [x] Verify 34 tests, app/function typechecks, build and isolated SQL permission/payment checks.
+- [ ] Deploy prerequisites/backend before enabling server mode and validate controlled sandbox/customer flow.
+- [ ] Migrate legacy consumers and verify caller inventory before global final-table access cutoff.
+
+Review: local source/SQL fixtures are verified; no production migration/deployment/sending occurred. Follow `docs/customer-boundary-rollout.md`; broad legacy access remains an unresolved deployed issue until coordinated cutoff. Both dirty original checkouts remain preserved.
+
 ## Cake flavor by tier
 
 - [x] Trace product selection, validation, and submitted product-description mapping.

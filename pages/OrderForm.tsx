@@ -3,7 +3,6 @@ import { useForm, useFieldArray, Controller, type FieldErrors } from 'react-hook
 import { useParams, useNavigate } from 'react-router-dom';
 import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
-import { sendMessengerConfirmation } from '../services/messengerService';
 import type { OrderFormData, Product } from '../types';
 import Header from '../components/Header';
 import FormSection from '../components/FormSection';
@@ -84,6 +83,11 @@ export const getPrefilledTime = (data: Record<string, unknown>): string => {
   return time === '00:00' && metadata?.eventTime !== '00:00' ? '' : time;
 };
 
+export const prefilledQuantity = (value: unknown, messenger: boolean): number => {
+  const number = value === null || value === undefined || value === '' ? NaN : Number(value);
+  return Number.isInteger(number) && number > 0 ? number : messenger ? NaN : 1;
+};
+
 // Keep the legacy PRE fields authoritative; structured metadata supplements flavors only.
 export const mapPreOrderProducts = (data: Record<string, unknown>): Product[] => {
   const metadata = data.messenger_prefill as { products?: Record<string, unknown>[] } | null;
@@ -115,8 +119,8 @@ export const mapPreOrderProducts = (data: Record<string, unknown>): Product[] =>
       cakeFlavor: subType === BENTO_CAKE_SUBTYPE ? 'Chocolate' : flavor(extra?.flavor),
       topTierFlavor: flavor(extra?.topTierFlavor), middleTierFlavor: flavor(extra?.middleTierFlavor),
       bottomTierFlavor: flavor(extra?.bottomTierFlavor),
-      message, details, quantity: Number(data[`quantity${i}`] || data[`qty${i}`]) || 1,
-      candle: text(data[`Candle${i === 1 ? '' : i}`]), images: [], preExistingImages: existingImages,
+      message, details, quantity: prefilledQuantity(data[`quantity${i}`] ?? data[`qty${i}`], Boolean(metadata)),
+      candle: text(i === 1 ? data.Candle : data[`candle${i}`] ?? data[`Candle${i}`]), images: [], preExistingImages: existingImages,
     });
   }
   return products.length ? products : [emptyPreProduct()];
@@ -177,6 +181,24 @@ const SUBMISSION_STAGE_LABELS: Record<SubmissionStage, string> = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SERVER_OWNED_SUBMISSION = import.meta.env.VITE_ORDER_SUBMISSION_API === 'server';
+export function retainedSubmissionId(key: string): string {
+  try {
+    const existing = sessionStorage.getItem(key);
+    if (isUuid(existing)) return existing;
+    const id = crypto.randomUUID(); sessionStorage.setItem(key, id); return id;
+  } catch { return crypto.randomUUID(); }
+}
+
+async function customerOrderStatus(capability: string) {
+  const { data, error } = await supabase.rpc('order_customer_status', { p_capability: capability });
+  if (error) return { data: null, error };
+  if (data?.kind === 'payment_pending') {
+    if (data.paymentUrl) window.location.assign(data.paymentUrl);
+    throw new Error('A card payment is already in progress. Resume the existing payment link or ask staff to reconcile it.');
+  }
+  return { data: data?.kind === 'completed' ? { order_number_text: data.orderNumber } : null, error: null };
+}
+
 const SUBMISSION_NETWORK_TIMEOUT_MS = 30_000;
 
 export const isUuid = (value: string | null | undefined): value is string =>
@@ -327,8 +349,10 @@ const OrderForm = (): React.JSX.Element => {
   const [isAddressModalOpen, setAddressModalOpen] = useState(false);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [addressSource, setAddressSource] = useState<'map' | 'manual'>('manual');
-  const submissionIdRef = useRef(crypto.randomUUID());
+  const attemptStorageKey = `order-form-attempt:${normalizedFacebookU || routeSubscriberId || 'default-user'}`;
+  const submissionIdRef = useRef(retainedSubmissionId(attemptStorageKey));
   const submissionStageRef = useRef<SubmissionStage>('idle');
+  useEffect(() => { submissionIdRef.current = retainedSubmissionId(attemptStorageKey); }, [attemptStorageKey]);
   const addressDisplayRef = useRef<HTMLDivElement>(null);
   const imagePreviewsRef = useRef(imagePreviews);
   const paymentPreviewRef = useRef(paymentPreview);
@@ -397,13 +421,10 @@ const OrderForm = (): React.JSX.Element => {
       if (!normalizedFacebookU || isDefaultUser) return;
       setIsLoading(true);
       try {
-        const { data: submittedOrder, error: submittedOrderError } = await supabase
-          .from('New Facebook Orders')
-          .select('order_number_text')
-          .eq('facebookU', normalizedFacebookU)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { data: submittedOrder, error: submittedOrderError } = SERVER_OWNED_SUBMISSION
+          ? await customerOrderStatus(normalizedFacebookU)
+          : await supabase.from('New Facebook Orders').select('order_number_text')
+            .eq('facebookU', normalizedFacebookU).order('created_at', { ascending: false }).limit(1).maybeSingle();
 
         if (submittedOrderError) throw submittedOrderError;
         if (cancelled) return;
@@ -415,17 +436,20 @@ const OrderForm = (): React.JSX.Element => {
           return;
         }
 
-        const { data: messengerDraft, error: messengerError } = await supabase.rpc(
-          'messenger_customer_draft', { p_facebook_u: normalizedFacebookU },
-        );
+        const status = SERVER_OWNED_SUBMISSION
+          ? await supabase.rpc('order_customer_status', { p_capability: normalizedFacebookU }) : null;
+        const { data: messengerDraft, error: messengerError } = SERVER_OWNED_SUBMISSION
+          ? { data: status?.data?.draft, error: status?.error }
+          : await supabase.rpc('messenger_customer_draft', { p_facebook_u: normalizedFacebookU });
         if (messengerError) throw messengerError;
         let data = messengerDraft;
-        if (!data) {
+        if (!data && !SERVER_OWNED_SUBMISSION) {
           const legacy = await supabase.from('New PRE Facebook Orders').select('*')
             .eq('facebookU', normalizedFacebookU).maybeSingle();
           if (legacy.error) throw legacy.error;
           data = legacy.data;
         }
+        if (!data && SERVER_OWNED_SUBMISSION) throw new Error('This order link is unavailable. Ask staff for a new link.');
         messengerDraftRef.current = Boolean(data?.messenger_prefill);
         if (cancelled) return;
         if (data) {
@@ -610,13 +634,9 @@ const OrderForm = (): React.JSX.Element => {
     try {
       if (normalizedFacebookU) {
         const { data: existingOrder, error: existingOrderError } = await withSubmissionTimeout(
-          supabase
-            .from('New Facebook Orders')
-            .select('order_number_text')
-            .eq('facebookU', normalizedFacebookU)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
+          SERVER_OWNED_SUBMISSION ? customerOrderStatus(normalizedFacebookU) : supabase
+            .from('New Facebook Orders').select('order_number_text')
+            .eq('facebookU', normalizedFacebookU).order('created_at', { ascending: false }).limit(1).maybeSingle(),
           'Checking existing order',
         );
 
@@ -897,17 +917,7 @@ const OrderForm = (): React.JSX.Element => {
         }
 
         if (serverResponse.kind === 'order_created') {
-          if (messengerDraftRef.current && normalizedFacebookU) {
-            runInBackground(supabase.rpc('messenger_customer_submitted', { p_facebook_u: normalizedFacebookU }));
-          }
-          if (activeSubscriberId && activeSubscriberId !== 'default-user') {
-            const fbMessage = `We received your order form! Your order number is ${serverResponse.orderNumber || ''}. Please give our staff time to confirm the payment image you sent. Thank you!`;
-            void sendMessengerConfirmation(activeSubscriberId, fbMessage).catch(() => undefined);
-            runInBackground(supabase
-              .from('aichatassistant')
-              .update({ firstmessagedate: null })
-              .eq('subscriberid', activeSubscriberId));
-          }
+          try { sessionStorage.removeItem(attemptStorageKey); } catch { /* Order success does not depend on browser storage. */ }
           updateSubmissionStage('complete');
           navigate('/thank-you', {
             state: { orderNumber: serverResponse.orderNumber },
@@ -916,17 +926,6 @@ const OrderForm = (): React.JSX.Element => {
         }
 
         if (serverResponse.kind === 'payment_required' && serverResponse.paymentUrl) {
-          if (messengerDraftRef.current && normalizedFacebookU) {
-            runInBackground(supabase.rpc('messenger_customer_submitted', { p_facebook_u: normalizedFacebookU }));
-          }
-          if (activeSubscriberId && activeSubscriberId !== 'default-user') {
-            const fbMessage = 'We received your order form! A representative will message you soon to confirm your order details. Thank you!';
-            void sendMessengerConfirmation(activeSubscriberId, fbMessage).catch(() => undefined);
-            runInBackground(supabase
-              .from('aichatassistant')
-              .update({ firstmessagedate: null })
-              .eq('subscriberid', activeSubscriberId));
-          }
           window.location.href = serverResponse.paymentUrl;
           return;
         }
@@ -957,9 +956,6 @@ const OrderForm = (): React.JSX.Element => {
         }
 
         if (activeSubscriberId && activeSubscriberId !== 'default-user') {
-          const fbMessage = `We received your order form! A representative will message you soon to confirm your order details. Thank you!`;
-          sendMessengerConfirmation(activeSubscriberId, fbMessage)
-            .catch(() => undefined);
         }
 
         if (activeSubscriberId && activeSubscriberId !== 'default-user') {
@@ -1001,9 +997,6 @@ const OrderForm = (): React.JSX.Element => {
 
       // Step 7: Send automated Messenger confirmation
       if (activeSubscriberId && activeSubscriberId !== 'default-user') {
-        const fbMessage = `We received your order form! Your order number is ${orderNumber}. Please give our staff time to confirm the payment image you sent. Thank you!`;
-        sendMessengerConfirmation(activeSubscriberId, fbMessage)
-          .catch(() => undefined);
       }
 
       if (normalizedFacebookU && !isDefaultUser) {
@@ -1379,6 +1372,7 @@ const OrderForm = (): React.JSX.Element => {
                       valueAsNumber: true,
                       required: 'Quantity is required',
                       min: { value: 1, message: 'Quantity must be at least 1' },
+                      validate: value => Number.isInteger(value) && Number(value) > 0 || 'Enter a whole-number quantity of at least 1',
                     }}
                     error={errors.products?.[index]?.quantity?.message}
                     type="number"

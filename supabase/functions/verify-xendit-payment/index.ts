@@ -70,17 +70,8 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    if (!isUuid(payment.submission_id)) {
-      // Existing v26/v24 payments have no submission ID and may already have
-      // been copied into the final table. Refuse to guess and duplicate them.
-      throw new ContractError(
-        'LEGACY_PAYMENT_REQUIRES_REVIEW',
-        'This earlier payment needs manual verification. Please contact support with the attempt ID.',
-        409,
-        false,
-      )
-    }
-    submissionId = payment.submission_id
+    const legacy = !isUuid(payment.submission_id)
+    submissionId = legacy ? undefined : payment.submission_id
 
     const invoice = await fetchXenditInvoiceById(
       payment.xendit_invoice_id,
@@ -88,15 +79,18 @@ Deno.serve(async (req: Request) => {
     validateRecordedInvoice(invoice, payment)
 
     if (invoice.status === 'PAID' || invoice.status === 'SETTLED') {
-      const { data, error } = await admin.rpc('finalize_xendit_order', {
-        p_submission_id: submissionId,
-        p_invoice_id: invoice.id,
-        p_external_id: invoice.external_id,
-        p_paid_amount: invoice.amount,
-        p_paid_at: invoice.paid_at ?? null,
-        p_payment_method:
-          invoice.payment_method ?? invoice.payment_channel ?? null,
-      })
+      const { data, error } = legacy
+        ? await admin.rpc('finalize_legacy_xendit_order', {
+            p_invoice_id: invoice.id, p_external_id: invoice.external_id,
+            p_paid_amount: invoice.amount, p_paid_at: invoice.paid_at ?? null,
+            p_method: invoice.payment_method ?? invoice.payment_channel ?? null,
+          })
+        : await admin.rpc('finalize_xendit_order', {
+            p_submission_id: submissionId, p_invoice_id: invoice.id,
+            p_external_id: invoice.external_id, p_paid_amount: invoice.amount,
+            p_paid_at: invoice.paid_at ?? null,
+            p_payment_method: invoice.payment_method ?? invoice.payment_channel ?? null,
+          })
 
       if (error) {
         throw new ContractError(
@@ -125,6 +119,12 @@ Deno.serve(async (req: Request) => {
       })
     }
 
+    if (legacy) {
+      const { error } = await admin.from('xendit_payments').update({ status: invoice.status, updated_at: new Date().toISOString() })
+        .eq('id', payment.id).not('status', 'in', '(PAID,SETTLED)')
+      if (error) throw new ContractError('PAYMENT_STATUS_SAVE_FAILED', 'We could not update payment status.', 503, true)
+      return jsonResponse(req, { kind: 'payment_status', status: invoice.status, invoiceId: invoice.id, attemptId })
+    }
     const { error: statusError } = await admin.rpc(
       'record_xendit_payment_status',
       {

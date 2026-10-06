@@ -9,3 +9,11 @@ entrypoint = "./functions/send-messenger-message/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-messenger-message/*.html" ]
+
+# Customer endpoints authorize the random order capability in their contracts.
+[functions.submit-order]
+verify_jwt = false
+
+[functions.send-order-confirmations]
+# Dedicated worker secret is checked by the handler; it is not a Supabase JWT.
+verify_jwt = false

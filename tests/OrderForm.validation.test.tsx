@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import OrderForm, { formatProductDescription, isUuid, mapPreOrderProducts, getPrefilledTime } from '../pages/OrderForm';
+import OrderForm, { formatProductDescription, isUuid, mapPreOrderProducts, getPrefilledTime, retainedSubmissionId } from '../pages/OrderForm';
 
 const fromMock = vi.hoisted(() => vi.fn());
 const rpcMock = vi.hoisted(() => vi.fn());
@@ -247,4 +247,29 @@ describe('Messenger PRE product compatibility', () => {
     expect(legacy.productType).toBe('1 Tier');
     expect(mapPreOrderProducts({})).toHaveLength(1);
   });
+});
+
+
+describe('Messenger quantities and candles', () => {
+  it('preserves unknown quantities for customer confirmation in each slot', () => {
+    const products = mapPreOrderProducts({ Product1: 'N/A', Product2: 'N/A', product3: 'N/A',
+      details1: 'one', details2: 'two', details3: 'three', quantity1: null, quantity2: null, qty3: '',
+      Candle: 'stick', candle2: 'number 2', candle3: 'number 3', messenger_prefill: { products: [{}, {}, {}] } });
+    expect(products).toHaveLength(3);
+    expect(products.every(product => Number.isNaN(product.quantity))).toBe(true);
+    expect(products.map(product => product.candle)).toEqual(['stick', 'number 2', 'number 3']);
+  });
+  it('retains legacy uppercase fallback and explicitly stated quantity', () => {
+    const products = mapPreOrderProducts({ Product2: 'N/A', details2: 'cake', Candle2: 'legacy', quantity2: 2 });
+    expect(products[1].quantity).toBe(2);
+    expect(products[1].candle).toBe('legacy');
+  });
+});
+
+
+it('retains a random submission ID for reload recovery without reusing another route', () => {
+  sessionStorage.clear();
+  const first = retainedSubmissionId('attempt:one');
+  expect(retainedSubmissionId('attempt:one')).toBe(first);
+  expect(retainedSubmissionId('attempt:two')).not.toBe(first);
 });
