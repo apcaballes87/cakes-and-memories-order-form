@@ -77,6 +77,56 @@ const mapProductSize = (sizeStr: string) => {
   return { type: 'Other', subType: '', other: sizeStr };
 };
 
+export const getPrefilledTime = (data: Record<string, unknown>): string => {
+  const time = typeof data.TimeEvent === 'string' ? data.TimeEvent.substring(0, 5) : '';
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return '';
+  const metadata = data.messenger_prefill as { eventTime?: unknown } | null;
+  return time === '00:00' && metadata?.eventTime !== '00:00' ? '' : time;
+};
+
+// Keep the legacy PRE fields authoritative; structured metadata supplements flavors only.
+export const mapPreOrderProducts = (data: Record<string, unknown>): Product[] => {
+  const metadata = data.messenger_prefill as { products?: Record<string, unknown>[] } | null;
+  const structured = Array.isArray(metadata?.products) ? metadata.products : [];
+  const text = (value: unknown): string => typeof value === 'string' ? value : '';
+  const images = (value: unknown): string[] => {
+    if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string' && Boolean(item));
+    if (typeof value !== 'string' || !value.trim()) return [];
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) return images(parsed);
+    } catch { /* Legacy pic columns also contain plain URLs. */ }
+    return [value];
+  };
+  const flavor = (value: unknown): string => CAKE_FLAVORS.find(option => option.toLowerCase() === text(value).trim().toLowerCase()) || '';
+  const products: Product[] = [];
+  for (let i = 1; i <= 3; i++) {
+    const size = text(data[`Product${i}`] || data[`product${i}`]);
+    const details = text(data[`details${i}`]);
+    const message = text(data[`Message${i}`] || data[`message${i}`]);
+    const existingImages = images(i === 1 ? data.cakeimages : data[`pic${i}`]);
+    const extra = structured[i - 1];
+    if ((!size || size === 'N/A') && !existingImages.length && !details && !message && !extra) continue;
+    const { type, subType, other } = mapProductSize(size);
+    // Keep gaps so Product3 images cannot silently become Product2 images on submission.
+    while (products.length < i - 1) products.push(emptyPreProduct());
+    products.push({
+      productType: type, productSubType: subType, otherProduct: other,
+      cakeFlavor: subType === BENTO_CAKE_SUBTYPE ? 'Chocolate' : flavor(extra?.flavor),
+      topTierFlavor: flavor(extra?.topTierFlavor), middleTierFlavor: flavor(extra?.middleTierFlavor),
+      bottomTierFlavor: flavor(extra?.bottomTierFlavor),
+      message, details, quantity: Number(data[`quantity${i}`] || data[`qty${i}`]) || 1,
+      candle: text(data[`Candle${i === 1 ? '' : i}`]), images: [], preExistingImages: existingImages,
+    });
+  }
+  return products.length ? products : [emptyPreProduct()];
+};
+
+const emptyPreProduct = (): Product => ({
+  productType: '', productSubType: '', otherProduct: '', cakeFlavor: '', topTierFlavor: '',
+  middleTierFlavor: '', bottomTierFlavor: '', message: '', details: '', quantity: 1, candle: '', images: [],
+});
+
 // QR payment images to show per selected option
 const PAYMENT_QR_MAP: Record<string, string> = {
   'GCash': 'https://congofivupobtfudnhni.supabase.co/storage/v1/object/public/files/paymentoptions/cakesandmemories-gcash.webp',
@@ -268,6 +318,8 @@ const OrderForm = (): React.JSX.Element => {
   const [submissionStage, setSubmissionStage] = useState<SubmissionStage>('idle');
   const [submissionError, setSubmissionError] = useState<VisibleSubmissionError | null>(null);
   const [validationErrors, setValidationErrors] = useState<Array<{ path: string; message: string }>>([]);
+  const messengerDraftRef = useRef(false);
+  const [prefilledTime, setPrefilledTime] = useState('');
   const [activeSubscriberId, setActiveSubscriberId] = useState<string | null>(routeSubscriberId);
   const [imagePreviews, setImagePreviews] = useState<{ [key: number]: string[] }>({});
   const [imageSelectionErrors, setImageSelectionErrors] = useState<Record<number, string>>({});
@@ -363,13 +415,18 @@ const OrderForm = (): React.JSX.Element => {
           return;
         }
 
-        const { data, error } = await supabase
-          .from('New PRE Facebook Orders')
-          .select('*')
-          .eq('facebookU', normalizedFacebookU)
-          .maybeSingle();
-
-        if (error) throw error;
+        const { data: messengerDraft, error: messengerError } = await supabase.rpc(
+          'messenger_customer_draft', { p_facebook_u: normalizedFacebookU },
+        );
+        if (messengerError) throw messengerError;
+        let data = messengerDraft;
+        if (!data) {
+          const legacy = await supabase.from('New PRE Facebook Orders').select('*')
+            .eq('facebookU', normalizedFacebookU).maybeSingle();
+          if (legacy.error) throw legacy.error;
+          data = legacy.data;
+        }
+        messengerDraftRef.current = Boolean(data?.messenger_prefill);
         if (cancelled) return;
         if (data) {
           if (data.submitted) {
@@ -379,59 +436,7 @@ const OrderForm = (): React.JSX.Element => {
               attemptId: submissionIdRef.current,
             });
           }
-          const mappedProducts = [];
-          
-          // Map up to 3 products
-          for (let i = 1; i <= 3; i++) {
-            const productSize = data[`Product${i}`] || data[`product${i}`];
-            if (productSize && productSize !== 'N/A') {
-              const { type, subType, other } = mapProductSize(productSize);
-              
-              // Handle images for this product
-              let existingImages: string[] = [];
-              if (i === 1 && data.cakeimages) {
-                existingImages = Array.isArray(data.cakeimages) ? data.cakeimages : [];
-              } else if (i === 2 && data.pic2) {
-                existingImages = [data.pic2];
-              } else if (i === 3 && data.pic3) {
-                existingImages = [data.pic3];
-              }
-
-              mappedProducts.push({
-                productType: type,
-                productSubType: subType,
-                otherProduct: other,
-                cakeFlavor: '',
-                topTierFlavor: '',
-                middleTierFlavor: '',
-                bottomTierFlavor: '',
-                message: data[`Message${i}`] || data[`message${i}`] || '',
-                details: data[`details${i}`] || '',
-                quantity: data[`quantity${i}`] || data[`qty${i}`] || 1,
-                candle: data[`Candle${i === 1 ? '' : i}`] || '',
-                images: [],
-                preExistingImages: existingImages
-              });
-            }
-          }
-
-          // If no products found, add one empty
-          if (mappedProducts.length === 0) {
-            mappedProducts.push({
-              productType: '',
-              productSubType: '',
-              otherProduct: '',
-              cakeFlavor: '',
-              topTierFlavor: '',
-              middleTierFlavor: '',
-              bottomTierFlavor: '',
-              message: '',
-              details: '',
-              quantity: 1,
-              candle: '',
-              images: [],
-            });
-          }
+          const mappedProducts = mapPreOrderProducts(data);
 
           setValue('facebookname', data.facebookname || '');
           setValue('name', data.Name || '');
@@ -451,7 +456,9 @@ const OrderForm = (): React.JSX.Element => {
             setAddressSource('manual');
           }
           setValue('dateEvent', data.DateEvent || '');
-          setValue('timeEvent', data.TimeEvent ? data.TimeEvent.substring(0, 5) : '');
+          const validTime = getPrefilledTime(data);
+          setPrefilledTime(validTime);
+          setValue('timeEvent', validTime);
           setValue('paymentOption', data.paymentOption || '');
           setValue('instructions', data.Comment || '');
           setValue('price', data.totalorderprice || data.price || data.Price || data.paymentamount || 0);
@@ -890,6 +897,9 @@ const OrderForm = (): React.JSX.Element => {
         }
 
         if (serverResponse.kind === 'order_created') {
+          if (messengerDraftRef.current && normalizedFacebookU) {
+            runInBackground(supabase.rpc('messenger_customer_submitted', { p_facebook_u: normalizedFacebookU }));
+          }
           if (activeSubscriberId && activeSubscriberId !== 'default-user') {
             const fbMessage = `We received your order form! Your order number is ${serverResponse.orderNumber || ''}. Please give our staff time to confirm the payment image you sent. Thank you!`;
             void sendMessengerConfirmation(activeSubscriberId, fbMessage).catch(() => undefined);
@@ -906,6 +916,9 @@ const OrderForm = (): React.JSX.Element => {
         }
 
         if (serverResponse.kind === 'payment_required' && serverResponse.paymentUrl) {
+          if (messengerDraftRef.current && normalizedFacebookU) {
+            runInBackground(supabase.rpc('messenger_customer_submitted', { p_facebook_u: normalizedFacebookU }));
+          }
           if (activeSubscriberId && activeSubscriberId !== 'default-user') {
             const fbMessage = 'We received your order form! A representative will message you soon to confirm your order details. Thank you!';
             void sendMessengerConfirmation(activeSubscriberId, fbMessage).catch(() => undefined);
@@ -994,10 +1007,10 @@ const OrderForm = (): React.JSX.Element => {
       }
 
       if (normalizedFacebookU && !isDefaultUser) {
-        runInBackground(supabase
-          .from('New PRE Facebook Orders')
-          .update({ submitted: true })
-          .eq('facebookU', normalizedFacebookU));
+        runInBackground(messengerDraftRef.current
+          ? supabase.rpc('messenger_customer_submitted', { p_facebook_u: normalizedFacebookU })
+          : supabase.from('New PRE Facebook Orders').update({ submitted: true })
+              .eq('facebookU', normalizedFacebookU));
       }
 
       if (activeSubscriberId && activeSubscriberId !== 'default-user') {
@@ -1169,6 +1182,7 @@ const OrderForm = (): React.JSX.Element => {
               <label htmlFor="timeEvent" className="block text-sm font-medium text-gray-700 mb-1">Time of Delivery / Pickup</label>
               <select
                 id="timeEvent"
+                value={watch('timeEvent')}
                 {...register("timeEvent", { required: "Time is required" })}
                 aria-invalid={Boolean(errors.timeEvent)}
                 aria-describedby={errors.timeEvent ? 'timeEvent-error' : undefined}
@@ -1177,6 +1191,9 @@ const OrderForm = (): React.JSX.Element => {
                 }`}
               >
                 <option value="">Select a time</option>
+                {prefilledTime && !['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'].includes(prefilledTime) && (
+                  <option value={prefilledTime}>{prefilledTime} (prefilled)</option>
+                )}
                 <option value="10:00">10:00 AM</option>
                 <option value="11:00">11:00 AM</option>
                 <option value="12:00">12:00 PM</option>

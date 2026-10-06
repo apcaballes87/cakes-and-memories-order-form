@@ -2,13 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import OrderForm, { formatProductDescription, isUuid } from '../pages/OrderForm';
+import OrderForm, { formatProductDescription, isUuid, mapPreOrderProducts, getPrefilledTime } from '../pages/OrderForm';
 
 const fromMock = vi.hoisted(() => vi.fn());
+const rpcMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../services/supabaseClient', () => ({
   supabase: {
     from: fromMock,
+    rpc: rpcMock,
     functions: { invoke: vi.fn() },
   },
 }));
@@ -49,6 +51,7 @@ const fillEverythingExceptProduct = async () => {
 describe('OrderForm validation and dependency behavior', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset().mockResolvedValue({ data: null, error: null });
   });
 
   it('keeps numeric route identities out of UUID fields', () => {
@@ -174,3 +177,74 @@ const fillEverythingExceptProductAfterRender = async () => {
   renderDefaultForm();
   return fillEverythingExceptProduct();
 };
+
+
+describe('Messenger PRE product compatibility', () => {
+  it('distinguishes explicit midnight from the legacy unknown-time sentinel', () => {
+    expect(getPrefilledTime({TimeEvent:'00:00:00'})).toBe('');
+    expect(getPrefilledTime({TimeEvent:'00:00:00',messenger_prefill:{eventTime:'00:00'}})).toBe('00:00');
+  });
+  it('renders an unknown-size archived image and a prefilled flavor from a fetched draft', async () => {
+    const query = (data: unknown) => {
+      const builder = { select: vi.fn(), eq: vi.fn(), order: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data, error: null }) };
+      for (const key of ['select', 'eq', 'order', 'limit'] as const) builder[key].mockReturnValue(builder);
+      return builder;
+    };
+    rpcMock.mockResolvedValue({ data: {
+      subscriberid: '123', TimeEvent: '09:30:00', cakeimages: ['https://example.com/unknown-design.jpg'],
+      Product2: '6" Round (4" Thickness)', messenger_prefill: { products: [{ flavor: '' }, { flavor: 'Ube' }] },
+    }, error: null });
+    fromMock.mockImplementation(() => query(null));
+    render(<MemoryRouter initialEntries={['/order/60ce0d92-1fa2-4d9d-a50e-9efdd6ac26ce']}>
+      <Routes><Route path="/order/:facebookU" element={<OrderForm />} /></Routes>
+    </MemoryRouter>);
+    expect(await screen.findByAltText('Existing 1')).toHaveAttribute('src', 'https://example.com/unknown-design.jpg');
+    expect(screen.getByLabelText('Time of Delivery / Pickup')).toHaveValue('09:30');
+    expect(screen.getByRole('option', { name: '09:30 (prefilled)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ube' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not fall back to a broad table read when scoped draft retrieval fails', async () => {
+    const builder = { select: vi.fn(), eq: vi.fn(), order: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) };
+    for (const key of ['select', 'eq', 'order', 'limit'] as const) builder[key].mockReturnValue(builder);
+    fromMock.mockReturnValue(builder);
+    rpcMock.mockResolvedValue({ data: null, error: new Error('RPC unavailable') });
+    render(<MemoryRouter initialEntries={['/order/60ce0d92-1fa2-4d9d-a50e-9efdd6ac26ce']}>
+      <Routes><Route path="/order/:facebookU" element={<OrderForm />} /></Routes>
+    </MemoryRouter>);
+    expect(await screen.findByText('We could not load the saved order details. Please refresh and try again.')).toBeInTheDocument();
+    expect(fromMock).not.toHaveBeenCalledWith('New PRE Facebook Orders');
+  });
+
+  it('retains selected design images and notes before a size is known', () => {
+    const [product] = mapPreOrderProducts({ Product1: 'N/A', cakeimages: ['https://example.com/design.jpg'], details1: 'Change to pink' });
+    expect(product.productType).toBe('');
+    expect(product.preExistingImages).toEqual(['https://example.com/design.jpg']);
+    expect(product.details).toBe('Change to pink');
+  });
+
+  it('prefills supported single and tier flavors without guessing unsupported values', () => {
+    const products = mapPreOrderProducts({
+      Product1: '6" Round (4" Thickness)', Product2: '6"x9"',
+      messenger_prefill: { products: [{ flavor: 'vanilla' }, { topTierFlavor: 'Ube', bottomTierFlavor: 'Chocolate', middleTierFlavor: 'Strawberry' }] },
+    });
+    expect(products[0].cakeFlavor).toBe('Vanilla');
+    expect(products[1].topTierFlavor).toBe('Ube');
+    expect(products[1].bottomTierFlavor).toBe('Chocolate');
+    expect(products[1].middleTierFlavor).toBe('');
+  });
+
+  it('keeps later product images in their original slot and supports JSON image arrays', () => {
+    const products = mapPreOrderProducts({ pic3: '["https://example.com/a.jpg","https://example.com/b.jpg"]' });
+    expect(products).toHaveLength(3);
+    expect(products[0].preExistingImages).toBeUndefined();
+    expect(products[2].preExistingImages).toEqual(['https://example.com/a.jpg', 'https://example.com/b.jpg']);
+  });
+
+  it('continues loading legacy drafts and uses the Bento flavor constraint', () => {
+    const [legacy] = mapPreOrderProducts({ Product1: 'Bento Cake (4")', cakeimages: ['https://example.com/a.jpg'] });
+    expect(legacy.cakeFlavor).toBe('Chocolate');
+    expect(legacy.productType).toBe('1 Tier');
+    expect(mapPreOrderProducts({})).toHaveLength(1);
+  });
+});
