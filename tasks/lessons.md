@@ -14,3 +14,5 @@
 
 - When adding a shared product option, check every requested product type in both
   the form visibility rule and the submitted product-description formatter.
+
+- For Messenger prefills, verify the exact PRE column mapping for contact, payment method and archived receipt, then exercise their hydration in both the actual customer form and staff preview. Payment screenshots belong in the saved receipt URL field, separate from cake design images.

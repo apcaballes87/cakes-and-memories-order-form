@@ -545,9 +545,16 @@ const OrderForm = (): React.JSX.Element => {
             }
           }
 
-          if (data.orderNumber) {
-             setValue('preExistingPaymentScreenshot', data.orderNumber);
+          // PRE's legacy orderNumber column stores the receipt image URL.
+          // Retain the URL rather than trying to populate a browser File input.
+          let savedReceipt = '';
+          if (typeof data.orderNumber === 'string') {
+            try {
+              const receiptUrl = new URL(data.orderNumber);
+              if (receiptUrl.protocol === 'https:') savedReceipt = receiptUrl.href;
+            } catch { /* An order identifier is not an image URL. */ }
           }
+          setValue('preExistingPaymentScreenshot', savedReceipt);
 
           if (data.Addres?.toLowerCase().includes('pickup')) {
             setValue('deliveryMethod', 'Pickup at Treehouse');
@@ -1670,13 +1677,16 @@ const OrderForm = (): React.JSX.Element => {
             {/* Pre-existing payment screenshot */}
             {!paymentPreview && watch('preExistingPaymentScreenshot') && (
               <div className="mb-4 relative w-28 h-28 group">
-                <img src={watch('preExistingPaymentScreenshot')} alt="Payment Preview" className="w-full h-full object-cover rounded-2xl border border-gray-300 opacity-80" />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity">
+                <a href={watch('preExistingPaymentScreenshot')} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" aria-label="Open saved payment screenshot">
+                  <img src={watch('preExistingPaymentScreenshot')} alt="Saved payment screenshot" className="w-full h-full object-cover rounded-2xl border border-gray-300 opacity-80" />
+                </a>
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity">
                    <span className="text-[10px] text-white font-bold bg-black/40 px-2 py-1 rounded">PRE-FILLED</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setValue('preExistingPaymentScreenshot', '')}
+                  aria-label="Remove saved payment screenshot"
                   className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
                 >
                   <Trash2 size={14} />

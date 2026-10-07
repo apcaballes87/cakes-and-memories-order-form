@@ -53,6 +53,29 @@ describe('Read-only signed staff preview', () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     expect(mocks.from).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled(); expect(mocks.invoke).not.toHaveBeenCalled();
   });
+  it('shows the selected GCash method, contact and archived receipt without allowing replacement or submission', async () => {
+    const receipt = 'https://example.com/archived-receipt.jpg';
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ draft: {
+      facebookU, Name: 'Preview customer', subscriberid: '123', contact: '09171234567',
+      paymentOption: 'GCash', orderNumber: receipt, Product1: '6" Round (4" Thickness)',
+    }, reviewReasons: [] })));
+    const { container } = renderPreview();
+    expect(await screen.findByDisplayValue('09171234567')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'GCash', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByAltText('Saved payment screenshot')).toHaveAttribute('src', receipt);
+    expect(screen.getByRole('link', { name: 'Open saved payment screenshot' })).toHaveAttribute('href', receipt);
+    expect(screen.getByRole('button', { name: 'Remove saved payment screenshot' })).toBeDisabled();
+    fireEvent.submit(container.querySelector('form')!);
+    expect(mocks.rpc).not.toHaveBeenCalled(); expect(mocks.from).not.toHaveBeenCalled(); expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+  it('does not render a non-HTTPS order identifier as a receipt link', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ draft: {
+      facebookU, Name: 'Preview customer', paymentOption: 'GCash', orderNumber: 'javascript:alert(1)',
+    }, reviewReasons: [] })));
+    renderPreview();
+    await screen.findByDisplayValue('Preview customer');
+    expect(screen.queryByRole('link', { name: 'Open saved payment screenshot' })).not.toBeInTheDocument();
+  });
   it('keeps normal fields and submission unavailable while the preview request is pending', async () => {
     let finish!: (response: Response) => void;
     vi.mocked(fetch).mockReturnValue(new Promise<Response>(resolve => { finish = resolve; }));

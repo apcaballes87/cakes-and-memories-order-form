@@ -191,7 +191,7 @@ describe('Messenger PRE product compatibility', () => {
       return builder;
     };
     rpcMock.mockResolvedValue({ data: {
-      subscriberid: '123', TimeEvent: '09:30:00', cakeimages: ['https://example.com/unknown-design.jpg'],
+      subscriberid: '123', contact: '09171234567', paymentOption: 'GCash', orderNumber: 'https://example.com/receipt.jpg', TimeEvent: '09:30:00', cakeimages: ['https://example.com/unknown-design.jpg'],
       Product2: '6" Round (4" Thickness)', messenger_prefill: { products: [{ flavor: '' }, { flavor: 'Ube' }] },
     }, error: null });
     fromMock.mockImplementation(() => query(null));
@@ -202,6 +202,10 @@ describe('Messenger PRE product compatibility', () => {
     expect(screen.getByLabelText('Time of Delivery / Pickup')).toHaveValue('09:30');
     expect(screen.getByRole('option', { name: '09:30 (prefilled)' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ube' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Contact Number')).toHaveValue('09171234567');
+    expect(screen.getByRole('button', { name: 'GCash', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByAltText('Saved payment screenshot')).toHaveAttribute('src', 'https://example.com/receipt.jpg');
+    expect(screen.getByRole('link', { name: 'Open saved payment screenshot' })).toHaveAttribute('href', 'https://example.com/receipt.jpg');
   });
 
   it('does not fall back to a broad table read when scoped draft retrieval fails', async () => {
