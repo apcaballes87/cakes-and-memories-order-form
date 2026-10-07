@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useForm, useFieldArray, Controller, type FieldErrors } from 'react-hook-form';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
 import type { OrderFormData, Product } from '../types';
@@ -199,6 +199,23 @@ async function customerOrderStatus(capability: string) {
   return { data: data?.kind === 'completed' ? { order_number_text: data.orderNumber } : null, error: null };
 }
 
+export function staffPreviewRequest(search: string): { active: boolean; url?: string; error?: string } {
+  const params = new URLSearchParams(search);
+  const names = ['previewSession', 'previewRevision', 'previewHash', 'previewExpires', 'previewToken'];
+  const present = [...params.keys()].filter(key => key.startsWith('preview'));
+  if (!present.length) return { active: false };
+  const invalid = { active: true, error: 'This staff preview link is incomplete or invalid. Generate a new preview from the staff dashboard.' };
+  if (present.some(key => !names.includes(key)) || names.some(key => params.getAll(key).length !== 1)) return invalid;
+  const session = params.get('previewSession')!, revision = params.get('previewRevision')!, hash = params.get('previewHash')!;
+  const expires = params.get('previewExpires')!, token = params.get('previewToken')!;
+  if (!isUuid(session) || !/^[1-9]\d*$/.test(revision) || !Number.isSafeInteger(Number(revision)) ||
+      !/^[a-f0-9]{64}$/i.test(hash) || !/^[a-f0-9]{64}$/i.test(token) || !/^\d+$/.test(expires) || !Number.isSafeInteger(Number(expires))) return invalid;
+  if (Number(expires) <= Math.floor(Date.now() / 1000)) return { active: true, error: 'This staff preview link has expired. Generate a new preview from the staff dashboard.' };
+  const url = new URL('https://production.cakesandmemories.com/api/messenger-preview');
+  for (const [key, value] of Object.entries({ session, revision, hash, expires, token })) url.searchParams.set(key, value);
+  return { active: true, url: url.toString() };
+}
+
 const SUBMISSION_NETWORK_TIMEOUT_MS = 30_000;
 
 export const isUuid = (value: string | null | undefined): value is string =>
@@ -326,6 +343,14 @@ const validateSelectedImage = (file: File): string | null => {
 const OrderForm = (): React.JSX.Element => {
   const { subscriberId, facebookU } = useParams<{ subscriberId?: string; numProducts?: string; facebookU?: string }>();
   const normalizedFacebookU = isUuid(facebookU) ? facebookU.trim() : null;
+  const location = useLocation();
+  const preview = staffPreviewRequest(location.search);
+  const isPreview = preview.active;
+  const [previewReady, setPreviewReady] = useState(false);
+  const [loadedPreviewSearch, setLoadedPreviewSearch] = useState('');
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewReasons, setPreviewReasons] = useState<string[]>([]);
+  const [previewProcessing, setPreviewProcessing] = useState(false);
   const routeSubscriberId = (
     subscriberId && subscriberId !== 'default-user'
       ? subscriberId
@@ -350,9 +375,9 @@ const OrderForm = (): React.JSX.Element => {
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [addressSource, setAddressSource] = useState<'map' | 'manual'>('manual');
   const attemptStorageKey = `order-form-attempt:${normalizedFacebookU || routeSubscriberId || 'default-user'}`;
-  const submissionIdRef = useRef(retainedSubmissionId(attemptStorageKey));
+  const submissionIdRef = useRef(isPreview ? crypto.randomUUID() : retainedSubmissionId(attemptStorageKey));
   const submissionStageRef = useRef<SubmissionStage>('idle');
-  useEffect(() => { submissionIdRef.current = retainedSubmissionId(attemptStorageKey); }, [attemptStorageKey]);
+  useEffect(() => { if (!isPreview) submissionIdRef.current = retainedSubmissionId(attemptStorageKey); }, [attemptStorageKey, isPreview]);
   const addressDisplayRef = useRef<HTMLDivElement>(null);
   const imagePreviewsRef = useRef(imagePreviews);
   const paymentPreviewRef = useRef(paymentPreview);
@@ -418,9 +443,24 @@ const OrderForm = (): React.JSX.Element => {
     let cancelled = false;
 
     const fetchPreFilledData = async () => {
-      if (!normalizedFacebookU || isDefaultUser) return;
+      if (!isPreview && (!normalizedFacebookU || isDefaultUser)) return;
       setIsLoading(true);
       try {
+        let data: Record<string, any> | null = null;
+        if (isPreview) {
+          setPreviewReady(false); setPreviewError(null);
+          if (preview.error || !preview.url || !normalizedFacebookU) throw new Error(preview.error || 'This staff preview order link is invalid. Generate a new preview.');
+          const response = await fetch(preview.url, { method: 'GET', cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(15_000) });
+          if (!response.ok) throw new Error(response.status === 410 || response.status === 403
+            ? 'This staff preview link has expired or changed. Generate a new preview from the staff dashboard.'
+            : 'Staff preview is unavailable. Generate a new preview or try again.');
+          const result = await response.json();
+          if (!result?.draft || typeof result.draft !== 'object' || Array.isArray(result.draft) || result.draft.facebookU !== normalizedFacebookU ||
+              !Array.isArray(result.reviewReasons) || result.reviewReasons.some((reason: unknown) => typeof reason !== 'string'))
+            throw new Error('The staff preview does not match this order. Generate a new preview.');
+          if (cancelled) return;
+          data = result.draft; setPreviewReasons(result.reviewReasons); setPreviewProcessing(Boolean(result.processing));
+        } else {
         const { data: submittedOrder, error: submittedOrderError } = SERVER_OWNED_SUBMISSION
           ? await customerOrderStatus(normalizedFacebookU)
           : await supabase.from('New Facebook Orders').select('order_number_text')
@@ -442,7 +482,7 @@ const OrderForm = (): React.JSX.Element => {
           ? { data: status?.data?.draft, error: status?.error }
           : await supabase.rpc('messenger_customer_draft', { p_facebook_u: normalizedFacebookU });
         if (messengerError) throw messengerError;
-        let data = messengerDraft;
+        data = messengerDraft;
         if (!data && !SERVER_OWNED_SUBMISSION) {
           const legacy = await supabase.from('New PRE Facebook Orders').select('*')
             .eq('facebookU', normalizedFacebookU).maybeSingle();
@@ -450,10 +490,11 @@ const OrderForm = (): React.JSX.Element => {
           data = legacy.data;
         }
         if (!data && SERVER_OWNED_SUBMISSION) throw new Error('This order link is unavailable. Ask staff for a new link.');
+        }
         messengerDraftRef.current = Boolean(data?.messenger_prefill);
         if (cancelled) return;
         if (data) {
-          if (data.submitted) {
+          if (data.submitted && !isPreview) {
             setSubmissionError({
               code: 'unfinished_order_recovered',
               message: 'We found an unfinished order attempt. Your details have been restored so you can safely continue.',
@@ -490,7 +531,7 @@ const OrderForm = (): React.JSX.Element => {
           
           if (data.subscriberid) {
             setActiveSubscriberId(String(data.subscriberid).trim());
-          } else {
+          } else if (!isPreview) {
             // Fallback: Check aichatassistant table using the UUID
             const { data: chatData } = await supabase
               .from('aichatassistant')
@@ -514,8 +555,13 @@ const OrderForm = (): React.JSX.Element => {
             setValue('deliveryMethod', 'Delivery');
           }
         }
+        if (isPreview && !cancelled) { setLoadedPreviewSearch(location.search); setPreviewReady(true); }
       } catch (err) {
         if (!cancelled) {
+          if (isPreview) {
+            setPreviewError(err instanceof Error ? err.message : 'Staff preview is unavailable. Generate a new preview.');
+            return;
+          }
           setSubmissionError({
             code: 'prefill_load_failed',
             message: 'We could not load the saved order details. Please refresh and try again.',
@@ -531,7 +577,7 @@ const OrderForm = (): React.JSX.Element => {
     return () => {
       cancelled = true;
     };
-  }, [normalizedFacebookU, isDefaultUser, navigate, setValue]);
+  }, [normalizedFacebookU, isDefaultUser, navigate, setValue, isPreview, location.search]);
 
   // Effect to clean up object URLs on unmount
   useEffect(() => {
@@ -626,6 +672,7 @@ const OrderForm = (): React.JSX.Element => {
   };
 
   const onSubmit = async (data: OrderFormData) => {
+    if (isPreview) return;
     const submissionId = submissionIdRef.current;
     setIsSubmitting(true);
     setValidationErrors([]);
@@ -1038,6 +1085,14 @@ const OrderForm = (): React.JSX.Element => {
   };
 
   const today = getLocalDateInputValue();
+  if (isPreview && (!previewReady || loadedPreviewSearch !== location.search || previewError)) return (
+    <div className="font-sans"><Header /><main className="max-w-md mx-auto p-4">
+      <h1 className="text-xl font-bold">Staff preview — not sent, read-only</h1>
+      {previewError ? <p className="mt-4 text-red-700" role="alert">{previewError}</p>
+        : <p className="mt-4" role="status">Loading staff preview…</p>}
+    </main></div>
+  );
+
 
   return (
     <div className="font-sans relative">
@@ -1049,7 +1104,14 @@ const OrderForm = (): React.JSX.Element => {
       )}
       <Header />
       <main className="max-w-md mx-auto p-4">
-        <form noValidate onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
+        {isPreview && <aside className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4" role="status">
+          <h1 className="text-lg font-bold">Staff preview — not sent, read-only</h1>
+          <p className="mt-2 text-sm">This is the saved draft for staff review. Submission, uploads and payment are disabled.</p>
+          {previewProcessing && <p className="mt-2 text-sm">A new preparation is in progress. This preview shows the last saved draft.</p>}
+          {previewReasons.length > 0 && <><h2 className="mt-3 font-semibold">Needs review</h2><ul className="mt-1 list-disc pl-5">{previewReasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></>}
+        </aside>}
+        <form noValidate onSubmit={event => { if (isPreview) { event.preventDefault(); return; } void handleSubmit(onSubmit, onInvalid)(event); }} className="space-y-6">
+          <fieldset disabled={isPreview} className="space-y-6" aria-label={isPreview ? 'Read-only staff preview' : undefined}>
           <FormSection title="Customer Details">
             <Input<OrderFormData> label="Facebook Name" name="facebookname" register={register} placeholder="e.g. Juan dela Cruz" isCapitalized />
             <Input<OrderFormData>
@@ -1097,7 +1159,7 @@ const OrderForm = (): React.JSX.Element => {
                   <div
                     id="address-display"
                     ref={addressDisplayRef}
-                    onClick={() => setAddressModalOpen(true)}
+                    onClick={() => { if (!isPreview) setAddressModalOpen(true); }}
                     className={`w-full px-4 py-3 border rounded-2xl bg-white cursor-pointer min-h-[50px] flex items-center focus:outline-none focus:ring-2 focus:ring-teal ${
                       errors.address ? 'border-red-500 ring-2 ring-red-500' : 'border-primaryLight'
                     }`}
@@ -1106,7 +1168,7 @@ const OrderForm = (): React.JSX.Element => {
                     aria-describedby={errors.address ? 'address-error' : undefined}
                     tabIndex={0}
                     role="button"
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setAddressModalOpen(true); }}
+                    onKeyDown={(e) => { if (!isPreview && (e.key === 'Enter' || e.key === ' ')) setAddressModalOpen(true); }}
                   >
                     {addressValue ? (
                       <span className="text-gray-900">{addressValue}</span>
@@ -1683,7 +1745,7 @@ const OrderForm = (): React.JSX.Element => {
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isPreview}
               onClick={() => updateSubmissionStage('validating')}
               className="flex-1 bg-primary text-white font-bold py-4 rounded-2xl hover:bg-opacity-90 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
@@ -1716,6 +1778,7 @@ const OrderForm = (): React.JSX.Element => {
               />
             </div>
           )}
+          </fieldset>
         </form>
       </main>
       <AddressModal
