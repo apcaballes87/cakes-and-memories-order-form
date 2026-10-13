@@ -17,3 +17,8 @@ verify_jwt = false
 [functions.send-order-confirmations]
 # Dedicated worker secret is checked by the handler; it is not a Supabase JWT.
 verify_jwt = false
+
+[functions.messenger-order-confirmation]
+# Called by the order insert trigger via pg_net; the handler checks the
+# per-order token in the service-role-only queue table instead of a JWT.
+verify_jwt = false
