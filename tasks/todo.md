@@ -13,6 +13,19 @@
 
 Review: local source/SQL fixtures are verified; no production migration/deployment/sending occurred. Follow `docs/customer-boundary-rollout.md`; broad legacy access remains an unresolved deployed issue until coordinated cutoff. Both dirty original checkouts remain preserved.
 
+## Genie.ph order flavor display
+
+- [x] Trace how Genie.ph orders reach the Facebook & Shopify order-list detail view.
+- [x] Normalize `customization_details.flavors` to Chocolate, Vanilla, Mocha, or Ube.
+- [x] Fix the detail view and add focused regression coverage without changing unrelated order data.
+- [x] Run focused tests, typecheck/build, and review the final diff.
+
+### Review
+
+- Fixed in `/Users/apcaballes/cakes-and-memories-order-list`: Genie.ph flavor JSONB now reaches the imported order form and is saved as `Chocolate`, `Vanilla`, `Mocha`, or `Ube`.
+- `npm test` passed with 6 tests; `npm run build` passed; live read-only data check confirmed 74 active paid/partial items with flavor arrays.
+- Repository-wide `npm run lint` and TypeScript typecheck remain blocked by pre-existing unrelated errors; no migration or production data backfill was performed.
+
 ## Cake flavor by tier
 
 - [x] Trace product selection, validation, and submitted product-description mapping.

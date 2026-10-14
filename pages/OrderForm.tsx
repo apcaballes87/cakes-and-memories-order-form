@@ -613,9 +613,8 @@ const OrderForm = (): React.JSX.Element => {
 
   useEffect(() => {
     if (deliveryMethod === 'Delivery') return;
-    setValue('address', '');
-    setDeliveryCoordinates(null);
-    setAddressSource('manual');
+    // Keep the address and pin so switching back to Delivery restores them;
+    // submission already ignores both for pickup orders.
     setValue('isDifferentReceiver', false);
     setValue('receiverName', '');
     setValue('receiverContact', '');

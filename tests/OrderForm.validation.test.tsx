@@ -85,6 +85,18 @@ describe('OrderForm validation and dependency behavior', () => {
     expect(screen.getByLabelText("Receiver's Contact")).toHaveValue('');
   });
 
+  it('keeps the delivery address after toggling to pickup and back', async () => {
+    renderDefaultForm();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Set delivery address' }));
+    await user.type(screen.getByLabelText(/complete delivery address/i), 'Unit 3, Test Street, Cebu City');
+    await user.click(screen.getByRole('button', { name: 'Confirm Address' }));
+    await user.click(screen.getByRole('button', { name: 'Pickup at Treehouse' }));
+    await user.click(screen.getByRole('button', { name: 'Delivery' }));
+
+    expect(screen.getByRole('button', { name: 'Set delivery address' })).toHaveTextContent('Unit 3, Test Street, Cebu City');
+  });
+
   it('clears stale subtype and Other details when Product Type changes', async () => {
     renderDefaultForm();
     const user = userEvent.setup();
