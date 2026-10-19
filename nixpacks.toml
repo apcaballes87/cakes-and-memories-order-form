@@ -1,3 +1,11 @@
 # Coolify builds this app with Nixpacks. The Supabase edge functions are Deno,
 # which makes Nixpacks pick its Deno provider, so pin the Vite app to Node.
 providers = ["node"]
+
+# package-lock.json was written on a Mac and lacks Linux's native rolldown
+# binary (npm optional-dependency bug npm/cli#4828), so add the matching one.
+[phases.install]
+cmds = [
+  "npm ci",
+  "npm install --no-save @rolldown/binding-linux-x64-gnu@$(node -p 'require(\"rolldown/package.json\").version')",
+]
