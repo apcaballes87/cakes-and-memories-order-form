@@ -1,0 +1,3 @@
+# Coolify builds this app with Nixpacks. The Supabase edge functions are Deno,
+# which makes Nixpacks pick its Deno provider, so pin the Vite app to Node.
+providers = ["node"]
