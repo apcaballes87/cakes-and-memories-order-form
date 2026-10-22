@@ -1,0 +1,39 @@
+name: Deploy production (Coolify)
+
+# Every push to main goes live at https://orderformcebu.cakesandmemories.com: Coolify (on the VPS, private) builds main
+# with Nixpacks and swaps the container. GitHub cannot reach Coolify's webhook, so this connects over SSH with a
+# deploy-only key whose forced command (ops/coolify-app-deploy.sh in apcaballes87/cake-genie-ai) can do nothing but
+# start this app's deploy and wait for it.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md']
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Roll out on Coolify
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_HOST" ]; then
+            echo "::error::Deploy key or host not configured"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o IdentitiesOnly=yes "deploy@$DEPLOY_HOST" "sha-$GITHUB_SHA"
