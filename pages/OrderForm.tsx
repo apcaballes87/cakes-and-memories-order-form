@@ -463,8 +463,7 @@ const OrderForm = (): React.JSX.Element => {
         } else {
         const { data: submittedOrder, error: submittedOrderError } = SERVER_OWNED_SUBMISSION
           ? await customerOrderStatus(normalizedFacebookU)
-          : await supabase.from('New Facebook Orders').select('order_number_text')
-            .eq('facebookU', normalizedFacebookU).order('created_at', { ascending: false }).limit(1).maybeSingle();
+          : await supabase.rpc('order_form_submitted_order', { p_facebook_u: normalizedFacebookU });
 
         if (submittedOrderError) throw submittedOrderError;
         if (cancelled) return;
@@ -484,8 +483,7 @@ const OrderForm = (): React.JSX.Element => {
         if (messengerError) throw messengerError;
         data = messengerDraft;
         if (!data && !SERVER_OWNED_SUBMISSION) {
-          const legacy = await supabase.from('New PRE Facebook Orders').select('*')
-            .eq('facebookU', normalizedFacebookU).maybeSingle();
+          const legacy = await supabase.rpc('order_form_legacy_draft', { p_facebook_u: normalizedFacebookU });
           if (legacy.error) throw legacy.error;
           data = legacy.data;
         }
@@ -533,14 +531,11 @@ const OrderForm = (): React.JSX.Element => {
             setActiveSubscriberId(String(data.subscriberid).trim());
           } else if (!isPreview) {
             // Fallback: Check aichatassistant table using the UUID
-            const { data: chatData } = await supabase
-              .from('aichatassistant')
-              .select('subscriberid')
-              .eq('newfacebookU', normalizedFacebookU)
-              .maybeSingle();
-            
-            if (!cancelled && chatData?.subscriberid) {
-              const trimmedId = String(chatData.subscriberid).trim();
+            const { data: chatSubscriberId } = await supabase
+              .rpc('order_form_subscriber', { p_facebook_u: normalizedFacebookU });
+
+            if (!cancelled && chatSubscriberId) {
+              const trimmedId = String(chatSubscriberId).trim();
               setActiveSubscriberId(trimmedId);
             }
           }
@@ -688,8 +683,7 @@ const OrderForm = (): React.JSX.Element => {
       if (normalizedFacebookU) {
         const { data: existingOrder, error: existingOrderError } = await withSubmissionTimeout(
           SERVER_OWNED_SUBMISSION ? customerOrderStatus(normalizedFacebookU) : supabase
-            .from('New Facebook Orders').select('order_number_text')
-            .eq('facebookU', normalizedFacebookU).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+            .rpc('order_form_submitted_order', { p_facebook_u: normalizedFacebookU }),
           'Checking existing order',
         );
 
@@ -1013,9 +1007,7 @@ const OrderForm = (): React.JSX.Element => {
 
         if (activeSubscriberId && activeSubscriberId !== 'default-user') {
           runInBackground(supabase
-            .from('aichatassistant')
-            .update({ firstmessagedate: null })
-            .eq('subscriberid', activeSubscriberId));
+            .rpc('order_form_reset_first_message', { p_subscriberid: activeSubscriberId }));
         }
 
         window.location.href = xenditResponse.paymentUrl;
@@ -1024,11 +1016,7 @@ const OrderForm = (): React.JSX.Element => {
 
       updateSubmissionStage('saving');
       const { data: insertedData, error: insertError } = await withSubmissionTimeout(
-        supabase
-          .from('New Facebook Orders')
-          .insert([orderData])
-          .select('id, order_number_text')
-          .single(),
+        supabase.rpc('order_form_submit', { p_order: orderData }),
         'Saving order',
       );
 
@@ -1055,15 +1043,12 @@ const OrderForm = (): React.JSX.Element => {
       if (normalizedFacebookU && !isDefaultUser) {
         runInBackground(messengerDraftRef.current
           ? supabase.rpc('messenger_customer_submitted', { p_facebook_u: normalizedFacebookU })
-          : supabase.from('New PRE Facebook Orders').update({ submitted: true })
-              .eq('facebookU', normalizedFacebookU));
+          : supabase.rpc('order_form_legacy_submitted', { p_facebook_u: normalizedFacebookU }));
       }
 
       if (activeSubscriberId && activeSubscriberId !== 'default-user') {
         runInBackground(supabase
-          .from('aichatassistant')
-          .update({ firstmessagedate: null })
-          .eq('subscriberid', activeSubscriberId));
+          .rpc('order_form_reset_first_message', { p_subscriberid: activeSubscriberId }));
       }
 
       updateSubmissionStage('complete');

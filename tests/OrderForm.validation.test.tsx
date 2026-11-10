@@ -202,10 +202,13 @@ describe('Messenger PRE product compatibility', () => {
       for (const key of ['select', 'eq', 'order', 'limit'] as const) builder[key].mockReturnValue(builder);
       return builder;
     };
-    rpcMock.mockResolvedValue({ data: {
+    const draft = {
       subscriberid: '123', contact: '09171234567', paymentOption: 'GCash', orderNumber: 'https://example.com/receipt.jpg', TimeEvent: '09:30:00', cakeimages: ['https://example.com/unknown-design.jpg'],
       Product2: '6" Round (4" Thickness)', messenger_prefill: { products: [{ flavor: '' }, { flavor: 'Ube' }] },
-    }, error: null });
+    };
+    rpcMock.mockImplementation(async (name: string) => (
+      name === 'messenger_customer_draft' ? { data: draft, error: null } : { data: null, error: null }
+    ));
     fromMock.mockImplementation(() => query(null));
     render(<MemoryRouter initialEntries={['/order/60ce0d92-1fa2-4d9d-a50e-9efdd6ac26ce']}>
       <Routes><Route path="/order/:facebookU" element={<OrderForm />} /></Routes>
