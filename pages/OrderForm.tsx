@@ -62,19 +62,59 @@ export const formatProductDescription = (product: Pick<Product, 'productType' | 
   return [productDescription, flavorDescription].filter(Boolean).join(' ');
 };
 
-const mapProductSize = (sizeStr: string) => {
-  if (!sizeStr || sizeStr === 'N/A') return { type: '', subType: '', other: '' };
-  
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normalizedInput = normalize(sizeStr);
-
-  for (const [type, subs] of Object.entries(productOptions.subTypes)) {
-    const found = subs.find(s => normalize(s) === normalizedInput);
-    if (found) return { type, subType: found, other: '' };
+/**
+ * The AI picks sizes from the shop's price list, which names some of them differently from this
+ * form's menu: 6"9" (2 tier), "… Fondant", "2oz Vanilla Cupcakes", "8x12 (3" thickness)". Turn those
+ * into the form's option, and return what the menu can't hold (fondant, thickness) as a note for the
+ * cake's details, so the customer sees the right size instead of "Other".
+ */
+export const sizeAlias = (sizeStr: string): { size: string; notes: string[] } => {
+  let size = sizeStr.trim();
+  const notes: string[] = [];
+  if (/\s+fondant$/i.test(size)) {
+    size = size.replace(/\s+fondant$/i, '').trim();
+    notes.push('Fondant');
   }
-  
-  return { type: 'Other', subType: '', other: sizeStr };
+  // 2 and 3 tiers: 6"9" → 6"x9", 6"9"12" → 6"x9"x12"
+  size = size.replace(/(\d+)"(?=\d)/g, '$1"x');
+  // Cupcakes: "2oz Vanilla Cupcakes" → "Vanilla Cupcakes"
+  size = size.replace(/^\d+\s*oz\s+/i, '');
+  // Square and rectangular: "8x12 (3" thickness)" → "8x12 Rectangular Cake" (+ the thickness as a note)
+  const flat = /^(\d+)\s*x\s*(\d+)\s*\((\d+)"\s*thickness\)$/i.exec(size);
+  if (flat) {
+    const [, w, h, thickness] = flat;
+    size = `${w}x${h} ${w === h ? 'Square' : 'Rectangular'} Cake`;
+    notes.push(`${thickness}" thickness`);
+  }
+  return { size, notes };
 };
+
+const mapProductSize = (sizeStr: string) => {
+  if (!sizeStr || sizeStr === 'N/A') return { type: '', subType: '', other: '', notes: [] as string[] };
+
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const find = (value: string) => {
+    for (const [type, subs] of Object.entries(productOptions.subTypes)) {
+      const found = subs.find(s => normalize(s) === normalize(value));
+      if (found) return { type, subType: found };
+    }
+    return null;
+  };
+
+  const exact = find(sizeStr);
+  if (exact) return { ...exact, other: '', notes: [] as string[] };
+  const alias = sizeAlias(sizeStr);
+  const aliased = find(alias.size);
+  if (aliased) return { ...aliased, other: '', notes: alias.notes };
+
+  return { type: 'Other', subType: '', other: sizeStr, notes: [] as string[] };
+};
+
+/** Adds lines to a cake's details unless they are already mentioned there. */
+const withNotes = (details: string, notes: string[]): string =>
+  notes.reduce((text, note) => (
+    !note || text.toLowerCase().includes(note.toLowerCase()) ? text : (text.trim() ? `${text.trim()}\n${note}` : note)
+  ), details);
 
 export const getPrefilledTime = (data: Record<string, unknown>): string => {
   const time = typeof data.TimeEvent === 'string' ? data.TimeEvent.substring(0, 5) : '';
@@ -111,7 +151,9 @@ export const mapPreOrderProducts = (data: Record<string, unknown>): Product[] =>
     const existingImages = images(i === 1 ? data.cakeimages : data[`pic${i}`]);
     const extra = structured[i - 1];
     if ((!size || size === 'N/A') && !existingImages.length && !details && !message && !extra) continue;
-    const { type, subType, other } = mapProductSize(size);
+    const { type, subType, other, notes } = mapProductSize(size);
+    // "Other" products have no flavor field, so a flavor the AI found goes into the details instead of being lost.
+    const otherFlavor = type === 'Other' && flavor(extra?.flavor) ? [`Flavor: ${flavor(extra?.flavor)}`] : [];
     // Keep gaps so Product3 images cannot silently become Product2 images on submission.
     while (products.length < i - 1) products.push(emptyPreProduct());
     products.push({
@@ -119,7 +161,7 @@ export const mapPreOrderProducts = (data: Record<string, unknown>): Product[] =>
       cakeFlavor: subType === BENTO_CAKE_SUBTYPE ? 'Chocolate' : flavor(extra?.flavor),
       topTierFlavor: flavor(extra?.topTierFlavor), middleTierFlavor: flavor(extra?.middleTierFlavor),
       bottomTierFlavor: flavor(extra?.bottomTierFlavor),
-      message, details, quantity: prefilledQuantity(data[`quantity${i}`] ?? data[`qty${i}`], Boolean(metadata)),
+      message, details: withNotes(details, [...notes, ...otherFlavor]), quantity: prefilledQuantity(data[`quantity${i}`] ?? data[`qty${i}`], Boolean(metadata)),
       candle: text(i === 1 ? data.Candle : data[`candle${i}`] ?? data[`Candle${i}`]), images: [], preExistingImages: existingImages,
     });
   }
@@ -254,13 +296,12 @@ const runInBackground = (operation: PromiseLike<unknown>) => {
   void Promise.resolve(operation).catch(() => undefined);
 };
 
-const getLocalDateInputValue = (): string => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+/**
+ * Today in the shop's time zone (YYYY-MM-DD). The phone's own date is wrong for customers abroad
+ * ordering for family in Cebu, and a UTC date is still yesterday before 8 AM in Manila.
+ */
+export const getLocalDateInputValue = (now: Date = new Date()): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 
 const collectErrorEntries = (
   errors: FieldErrors<OrderFormData>,
@@ -338,6 +379,26 @@ const validateSelectedImage = (file: File): string | null => {
   }
   if (file.size > MAX_SOURCE_IMAGE_BYTES) return `${file.name} is larger than the 20 MB upload limit.`;
   return null;
+};
+
+/** A photo from the chat. If it can't load, say so instead of showing a broken image. */
+export const PrefilledPhoto = ({ url, index }: { url: string; index: number }): React.JSX.Element => {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div role="img" aria-label={`Photo ${index + 1} couldn't load`} className="w-full h-full flex items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-1 text-center text-[9px] leading-tight text-gray-500">
+        Photo couldn&apos;t load. Remove it and upload it again.
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={`Existing ${index + 1}`}
+      onError={() => setFailed(true)}
+      className="w-full h-full object-cover rounded-xl border border-gray-300 opacity-80"
+    />
+  );
 };
 
 const OrderForm = (): React.JSX.Element => {
@@ -849,7 +910,9 @@ const OrderForm = (): React.JSX.Element => {
         receiverContact: data.isDifferentReceiver ? data.receiverContact : '',
 
         // Date & Time
-        DateOrdered: new Date().toISOString(),
+        // Manila's day (DateOrdered is a date column; a UTC timestamp gave yesterday before 8 AM,
+        // and with it yesterday's order number).
+        DateOrdered: getLocalDateInputValue(),
         DateEvent: data.dateEvent || '',
         TimeEvent: data.timeEvent ? `${data.timeEvent}:00` : '',
 
@@ -1439,12 +1502,8 @@ const OrderForm = (): React.JSX.Element => {
                     {watchedProducts[index]?.preExistingImages && watchedProducts[index].preExistingImages!.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-3">
                         {watchedProducts[index].preExistingImages!.map((url, imgIndex) => (
-                          <div key={`existing-${imgIndex}`} className="relative w-20 h-20 group">
-                            <img
-                              src={url}
-                              alt={`Existing ${imgIndex + 1}`}
-                              className="w-full h-full object-cover rounded-xl border border-gray-300 opacity-80"
-                            />
+                          <div key={`existing-${imgIndex}-${url}`} className="relative w-20 h-20 group">
+                            <PrefilledPhoto url={url} index={imgIndex} />
                             <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
                                <span className="text-[8px] text-white font-bold bg-black/40 px-1 rounded">PRE-FILLED</span>
                             </div>
